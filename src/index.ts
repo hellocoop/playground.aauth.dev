@@ -29,6 +29,16 @@ app.get('/.well-known/jwks.json', async (c) => {
   return c.json({ keys: [publicJwk] })
 })
 
+// ── Session check ──
+
+app.get('/session', async (c) => {
+  const sessionId = c.req.header('X-Session-Id')
+  if (!sessionId) return c.json({ valid: false }, 401)
+  const sessionData = await c.env.WEBAUTHN_KV.get(`session:${sessionId}`, 'json') as any
+  if (!sessionData) return c.json({ valid: false }, 401)
+  return c.json({ valid: true, username: sessionData.username })
+})
+
 // ── Agent token issuance ──
 
 app.post('/token', async (c) => {
@@ -85,11 +95,5 @@ app.post('/token', async (c) => {
 // ── WebAuthn routes ──
 
 app.route('/', webauthnRoutes())
-
-// ── Static UI ──
-
-app.get('/', (c) => {
-  return c.redirect('/index.html')
-})
 
 export default app

@@ -1,0 +1,7 @@
+{
+  "mcpServers": {
+    "cloudflare": {
+      "command": "mcp-server-cloudflare"
+    }
+  }
+}

@@ -36,7 +36,7 @@ This returns an `id` value. Update `wrangler.toml` to replace the placeholder `i
 
 ### 5. Update wrangler.toml configuration
 
-Set the `ORIGIN` variable to your deployment URL (e.g., `https://playground.aauth.ai` or your custom domain). Set `AGENT_NAME` to your preferred display name.
+Set the `ORIGIN` variable to your deployment URL (e.g., `https://playground.aauth.dev` or your custom domain). Set `AGENT_NAME` to your preferred display name.
 
 ### 6. Deploy
 
@@ -46,7 +46,7 @@ npx wrangler deploy
 
 ### 7. Set up custom domain (optional)
 
-In the Cloudflare dashboard, go to Workers & Pages > your worker > Settings > Domains & Routes, and add your custom domain (e.g., `playground.aauth.ai`). Make sure the domain's DNS is managed by Cloudflare.
+In the Cloudflare dashboard, go to Workers & Pages > your worker > Settings > Domains & Routes, and add your custom domain (e.g., `playground.aauth.dev`). Make sure the domain's DNS is managed by Cloudflare.
 
 ### 8. Verify well-known endpoints
 
@@ -70,4 +70,4 @@ The agent token lifetime is tied to the browser session. The web server controls
 - **Runtime**: Cloudflare Workers (Hono framework)
 - **Auth state**: Cloudflare KV (WebAuthn credentials and sessions)
 - **Signing**: Ed25519 via Web Crypto API (both server-side JWT signing and client-side ephemeral keys)
-- **Protocol**: AAuth Protocol — https://aauth.ai
+- **Protocol**: AAuth Protocol — https://aauth.dev

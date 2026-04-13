@@ -30,8 +30,8 @@ export function webauthnRoutes() {
       userName: body.username,
       attestationType: 'none',
       authenticatorSelection: {
-        residentKey: 'preferred',
-        userVerification: 'preferred',
+        residentKey: 'required',
+        userVerification: 'discouraged',
       },
     })
 
@@ -63,6 +63,7 @@ export function webauthnRoutes() {
         expectedChallenge: body.challenge,
         expectedOrigin: origin,
         expectedRPID: rpID,
+        requireUserVerification: false,
       })
 
       if (!verification.verified || !verification.registrationInfo) {
@@ -77,8 +78,14 @@ export function webauthnRoutes() {
         transports: body.response.response?.transports,
       }
 
-      // Store credential by username
+      // Store credential indexed by credential ID for discoverable login
       const username = challengeData.username
+      await c.env.WEBAUTHN_KV.put(`cred:${credential.id}`, JSON.stringify({
+        ...registration,
+        username,
+      }))
+
+      // Also store by username for listing user's credentials
       const existingCreds = await c.env.WEBAUTHN_KV.get(`creds:${username}`, 'json') as WebAuthnRegistration[] || []
       existingCreds.push(registration)
       await c.env.WEBAUTHN_KV.put(`creds:${username}`, JSON.stringify(existingCreds))
@@ -100,36 +107,24 @@ export function webauthnRoutes() {
     }
   })
 
-  // Generate authentication options
+  // Generate authentication options (discoverable — no username needed)
   routes.post('/webauthn/login/options', async (c) => {
-    const origin = c.env.ORIGIN
-    const rpID = new URL(origin).hostname
-
-    const body = await c.req.json<{ username: string }>()
-    if (!body.username) {
-      return c.json({ error: 'missing username' }, 400)
-    }
-
-    const credentials = await c.env.WEBAUTHN_KV.get(`creds:${body.username}`, 'json') as WebAuthnRegistration[] || []
+    const rpID = new URL(c.env.ORIGIN).hostname
 
     const options = await generateAuthenticationOptions({
       rpID,
-      allowCredentials: credentials.map((cred) => ({
-        id: cred.credentialID,
-        transports: cred.transports as any | undefined,
-      })),
-      userVerification: 'preferred',
+      allowCredentials: [],
+      userVerification: 'discouraged',
     })
 
     await c.env.WEBAUTHN_KV.put(`challenge:${options.challenge}`, JSON.stringify({
-      username: body.username,
       type: 'authentication',
     }), { expirationTtl: 300 })
 
     return c.json(options)
   })
 
-  // Verify authentication
+  // Verify authentication (discoverable — look up credential by ID)
   routes.post('/webauthn/login/verify', async (c) => {
     const origin = c.env.ORIGIN
     const rpID = new URL(origin).hostname
@@ -141,13 +136,13 @@ export function webauthnRoutes() {
       return c.json({ error: 'invalid challenge' }, 400)
     }
 
-    const username = challengeData.username
-    const credentials = await c.env.WEBAUTHN_KV.get(`creds:${username}`, 'json') as WebAuthnRegistration[] || []
-
-    const credential = credentials.find((c) => c.credentialID === body.response.id)
-    if (!credential) {
+    // Look up credential by ID (stored during registration)
+    const credData = await c.env.WEBAUTHN_KV.get(`cred:${body.response.id}`, 'json') as (WebAuthnRegistration & { username: string }) | null
+    if (!credData) {
       return c.json({ error: 'credential not found' }, 400)
     }
+
+    const { username, ...credential } = credData
 
     try {
       const verification = await verifyAuthenticationResponse({
@@ -155,6 +150,7 @@ export function webauthnRoutes() {
         expectedChallenge: body.challenge,
         expectedOrigin: origin,
         expectedRPID: rpID,
+        requireUserVerification: false,
         credential: {
           id: credential.credentialID,
           publicKey: base64urlDecode(credential.credentialPublicKey) as Uint8Array<ArrayBuffer>,
@@ -169,7 +165,7 @@ export function webauthnRoutes() {
 
       // Update counter
       credential.counter = verification.authenticationInfo.newCounter
-      await c.env.WEBAUTHN_KV.put(`creds:${username}`, JSON.stringify(credentials))
+      await c.env.WEBAUTHN_KV.put(`cred:${body.response.id}`, JSON.stringify({ ...credential, username }))
 
       // Clean up challenge
       await c.env.WEBAUTHN_KV.delete(`challenge:${body.challenge}`)
@@ -182,7 +178,7 @@ export function webauthnRoutes() {
         createdAt: Date.now(),
       }), { expirationTtl: 3600 })
 
-      return c.json({ verified: true, sessionId })
+      return c.json({ verified: true, sessionId, username })
     } catch (err) {
       return c.json({ error: (err as Error).message }, 400)
     }

@@ -1,5 +1,5 @@
 {
-  "name": "playground.aauth.ai",
+  "name": "playground.aauth.dev",
   "version": "0.1.0",
   "private": true,
   "description": "AAuth Protocol Playground - a reference agent server on Cloudflare Workers",

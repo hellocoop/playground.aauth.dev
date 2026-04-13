@@ -1,4 +1,4 @@
-name = "playground-aauth-ai"
+name = "playground-aauth-dev"
 main = "src/index.ts"
 compatibility_date = "2025-04-01"
 
@@ -6,9 +6,14 @@ compatibility_date = "2025-04-01"
 directory = "public"
 
 [vars]
-ORIGIN = "https://playground.aauth.ai"
+ORIGIN = "https://playground.aauth.dev"
 AGENT_NAME = "AAuth Playground"
 
 [[kv_namespaces]]
 binding = "WEBAUTHN_KV"
-id = "placeholder"
+id = "8f3528fb8a884a7fa5d6e506ee783eca"
+
+# Custom domain — requires aauth.dev zone in this Cloudflare account
+[[routes]]
+pattern = "playground.aauth.dev"
+custom_domain = true
