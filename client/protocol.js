@@ -3,6 +3,7 @@
 // Built into public/protocol.js by esbuild; loaded as a classic script.
 
 import { fetch as sigFetch } from '@hellocoop/httpsig'
+import qrcode from 'qrcode-generator'
 
 // ── Log rendering ──
 
@@ -236,10 +237,19 @@ async function startAuthorization() {
           decodeJWTPayloadBrowser(psBody.auth_token))
       )
     } else if (psRes.status === 202) {
-      // Interaction required
+      // Interaction required. Per spec the PS sends `AAuth-Requirement:
+      // requirement=interaction; url="..."; code="..."`, but real-world
+      // PSes (Hellō wallet) put code/requirement/location in the JSON body
+      // and rely on the agent finding the URL from PS metadata's
+      // `interaction_endpoint`. Try header first, fall back to body.
       const reqHeader = psRes.headers.get('aauth-requirement') || ''
-      const interaction = parseInteractionHeader(reqHeader)
-      const pollUrl = psRes.headers.get('location')
+      const fromHeader = parseInteractionHeader(reqHeader)
+      const interaction = {
+        requirement: fromHeader.requirement || psBody?.requirement,
+        code: fromHeader.code || psBody?.code,
+        url: fromHeader.url || authzData.ps_metadata?.interaction_endpoint,
+      }
+      const pollUrl = psRes.headers.get('location') || psBody?.location
 
       addLogStep('Interaction Required', 'pending',
         formatResponse(202, responseHeaders, psBody) +
@@ -289,32 +299,41 @@ function parseInteractionHeader(header) {
 
 function renderInteraction(interaction, pollUrl) {
   if (!interaction.url || !interaction.code) {
-    return '<p style="color: var(--muted);">Interaction required but no URL/code provided.</p>'
+    const missing = []
+    if (!interaction.url) missing.push('interaction_endpoint (PS metadata) or url (header)')
+    if (!interaction.code) missing.push('code')
+    return `<p style="color: var(--muted);">Interaction required but missing: ${escapeHtml(missing.join(', '))}.</p>`
   }
 
   const fullUrl = `${interaction.url}?code=${encodeURIComponent(interaction.code)}`
+  const qrId = `qr-${Math.random().toString(36).slice(2, 9)}`
 
-  let html = `
+  const html = `
     <div class="interaction-box">
       <p>The Person Server requires user interaction.</p>
       <div class="interaction-code">${escapeHtml(interaction.code)}</div>
-      <div id="qr-code"></div>
-      <div style="margin-top: 0.75rem;">
-        <a href="${escapeHtml(fullUrl)}" target="_blank" rel="noopener">
-          <button>Go to Person Server</button>
+      <div class="interaction-actions">
+        <a class="interaction-link" href="${escapeHtml(fullUrl)}" target="_blank" rel="noopener">
+          Open Person Server &rarr;
         </a>
+        <code class="interaction-url">${escapeHtml(fullUrl)}</code>
       </div>
+      <div class="qr-code" id="${qrId}"></div>
+      <p class="qr-caption">Scan with another device to continue</p>
     </div>
   `
 
-  // Generate QR code after rendering (needs the DOM element)
+  // Generate QR code after the element is in the DOM.
   setTimeout(() => {
-    const qrContainer = document.getElementById('qr-code')
-    if (qrContainer && typeof qrcode !== 'undefined') {
+    const qrContainer = document.getElementById(qrId)
+    if (!qrContainer) return
+    try {
       const qr = qrcode(0, 'M')
       qr.addData(fullUrl)
       qr.make()
-      qrContainer.innerHTML = qr.createSvgTag(4)
+      qrContainer.innerHTML = qr.createSvgTag({ scalable: true, margin: 0 })
+    } catch (err) {
+      qrContainer.textContent = `(QR generation failed: ${err.message})`
     }
   }, 0)
 
