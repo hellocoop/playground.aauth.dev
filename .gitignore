@@ -2,6 +2,3 @@ node_modules/
 dist/
 .wrangler/
 .dev.vars
-
-# esbuild output — built from client/protocol.js
-public/protocol.js
