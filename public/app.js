@@ -155,6 +155,51 @@ function decodeJWTPayload(jwt) {
   return JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')))
 }
 
+// ── jwt.io-style syntax highlighting ──
+
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+// Render an encoded JWT as <header>.<payload>.<signature> with each segment colored.
+function renderEncodedJWT(jwt) {
+  const parts = String(jwt).split('.')
+  if (parts.length < 2) return escapeHtml(jwt)
+  const [h, p, s = ''] = parts
+  return (
+    `<span class="jwt-header">${escapeHtml(h)}</span>` +
+    `<span class="jwt-dot">.</span>` +
+    `<span class="jwt-payload">${escapeHtml(p)}</span>` +
+    `<span class="jwt-dot">.</span>` +
+    `<span class="jwt-signature">${escapeHtml(s)}</span>`
+  )
+}
+
+// Pretty-print a JS value as JSON with syntax-highlighted spans.
+function renderJSON(obj) {
+  const json = JSON.stringify(obj, null, 2)
+  if (json === undefined) return ''
+  // Escape HTML first so user-controlled strings can't inject markup.
+  const safe = escapeHtml(json)
+  return safe.replace(
+    /(&quot;(?:\\.|(?!&quot;).)*&quot;)(\s*:)?|\b(true|false|null)\b|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/g,
+    (match, str, colon, bool, num) => {
+      if (str) {
+        const cls = colon ? 'json-key' : 'json-string'
+        return `<span class="${cls}">${str}</span>${colon || ''}`
+      }
+      if (bool) return `<span class="json-bool">${bool}</span>`
+      if (num) return `<span class="json-num">${num}</span>`
+      return match
+    }
+  )
+}
+
 // ── WebAuthn helpers ──
 
 function base64urlToBuffer(str) {
@@ -335,8 +380,10 @@ function displayAgentToken(data) {
   const payload = decodeJWTPayload(data.agent_token)
   document.getElementById('token-result').classList.remove('hidden')
   document.getElementById('agent-id').textContent = data.agent_id
-  document.getElementById('agent-token-raw').textContent = data.agent_token
-  document.getElementById('token-payload').textContent = JSON.stringify(payload, null, 2)
+  const raw = document.getElementById('agent-token-raw')
+  raw.classList.add('encoded')
+  raw.innerHTML = renderEncodedJWT(data.agent_token)
+  document.getElementById('token-payload').innerHTML = renderJSON(payload)
 }
 
 // ── Agent token management ──

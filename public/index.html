@@ -66,18 +66,30 @@
   </div>
 
   <div class="section" id="authz-section" style="opacity: 0.4; pointer-events: none;">
-    <div class="card">
-      <h2 style="color: var(--text); font-weight: 600; font-size: 1rem;">Authorization Request</h2>
+    <fieldset class="section-box">
+      <legend>Authorization Request</legend>
 
-      <label>Person Server (PS)</label>
+      <label for="ps-url">Person Server (PS)</label>
       <input type="url" id="ps-url" placeholder="https://ps.example">
 
       <label>Scopes</label>
-      <div class="checkbox-group">
-        <label class="checkbox-label"><input type="checkbox" value="openid" checked> openid</label>
-        <label class="checkbox-label"><input type="checkbox" value="profile" checked> profile</label>
-        <label class="checkbox-label"><input type="checkbox" value="email"> email</label>
-        <label class="checkbox-label"><input type="checkbox" value="phone"> phone</label>
+      <div class="scope-grid">
+        <label class="checkbox-label"><input type="checkbox" value="openid" checked disabled> <span>openid <span class="scope-required">*</span></span></label>
+        <label class="checkbox-label"><input type="checkbox" value="profile" checked> <span>profile</span></label>
+        <label class="checkbox-label"><input type="checkbox" value="name"> <span>name</span></label>
+        <label class="checkbox-label"><input type="checkbox" value="email"> <span>email</span></label>
+        <label class="checkbox-label"><input type="checkbox" value="picture"> <span>picture</span></label>
+        <label class="checkbox-label"><input type="checkbox" value="nickname"> <span>nickname</span></label>
+        <label class="checkbox-label"><input type="checkbox" value="given_name"> <span>given_name</span></label>
+        <label class="checkbox-label"><input type="checkbox" value="family_name"> <span>family_name</span></label>
+        <label class="checkbox-label"><input type="checkbox" value="phone"> <span>phone</span></label>
+        <label class="checkbox-label"><input type="checkbox" value="ethereum"> <span>ethereum</span></label>
+        <label class="checkbox-label"><input type="checkbox" value="discord"> <span>discord</span></label>
+        <label class="checkbox-label"><input type="checkbox" value="twitter"> <span>twitter</span></label>
+        <label class="checkbox-label"><input type="checkbox" value="github"> <span>github</span></label>
+        <label class="checkbox-label"><input type="checkbox" value="gitlab"> <span>gitlab</span></label>
+        <label class="checkbox-label"><input type="checkbox" value="bound_key"> <span>bound_key <span class="scope-experimental" title="experimental">&#x1F9EA;</span></span></label>
+        <label class="checkbox-label"><input type="checkbox" value="offline_access"> <span>offline_access <span class="scope-experimental" title="experimental">&#x1F9EA;</span></span></label>
       </div>
 
       <details style="margin-bottom: 0.75rem;">
@@ -95,7 +107,7 @@
       </details>
 
       <button id="authz-btn">Continue</button>
-    </div>
+    </fieldset>
   </div>
 
   <div class="section hidden" id="log-section">

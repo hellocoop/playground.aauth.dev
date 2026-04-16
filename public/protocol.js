@@ -34,14 +34,14 @@ function addLogStep(label, status, content) {
 }
 
 function formatRequest(method, url, headers, body) {
-  let html = `<div class="token-display">${method} ${escapeHtml(url)}\n`
+  let html = `<div class="token-display">${escapeHtml(method)} ${escapeHtml(url)}\n`
   if (headers) {
     for (const [k, v] of Object.entries(headers)) {
       html += `${escapeHtml(k)}: ${escapeHtml(v)}\n`
     }
   }
   if (body) {
-    html += `\n${JSON.stringify(body, null, 2)}`
+    html += `\n${renderJSON(body)}`
   }
   html += '</div>'
   return html
@@ -55,7 +55,7 @@ function formatResponse(status, headers, body) {
     }
   }
   if (body) {
-    html += `\n${JSON.stringify(body, null, 2)}`
+    html += `\n${renderJSON(body)}`
   }
   html += '</div>'
   return html
@@ -65,19 +65,13 @@ function formatToken(label, token, decoded) {
   return `
     <details>
       <summary class="detail-summary">${escapeHtml(label)}</summary>
-      <div class="token-display">${escapeHtml(token)}</div>
+      <div class="token-display encoded">${renderEncodedJWT(token)}</div>
     </details>
     <details open>
       <summary class="detail-summary">Decoded</summary>
-      <div class="token-display">${JSON.stringify(decoded, null, 2)}</div>
+      <div class="token-display">${renderJSON(decoded)}</div>
     </details>
   `
-}
-
-function escapeHtml(str) {
-  const div = document.createElement('div')
-  div.textContent = str
-  return div.innerHTML
 }
 
 // ── Scope collection ──
