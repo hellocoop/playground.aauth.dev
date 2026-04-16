@@ -1,5 +1,8 @@
 // ── Protocol flow and log display ──
 // Depends on app.js globals: sessionId, agentToken, ephemeralKeyPair
+// Built into public/protocol.js by esbuild; loaded as a classic script.
+
+import { fetch as sigFetch } from '@hellocoop/httpsig'
 
 // ── Log rendering ──
 
@@ -177,41 +180,18 @@ async function startAuthorization() {
     }, psRequestBody)
   )
 
-  // Sign the PS token request per RFC 9421 (HTTP Message Signatures).
-  // Covered components match the Wallet's REQUIRED_COMPONENTS in svr/src/aauth/verify.js.
+  // Sign the PS token request per RFC 9421 (HTTP Message Signatures) using
+  // @hellocoop/httpsig. Components match the Wallet's REQUIRED_COMPONENTS
+  // (svr/src/aauth/verify.js) — the library's DEFAULT_COMPONENTS_BODY also
+  // includes content-type, which we omit here to keep signing minimal.
   try {
-    const psUrl = new URL(tokenEndpoint)
-    const created = Math.floor(Date.now() / 1000)
-    const signatureKeyHeader = `sig=jwt;jwt="${agentToken}"`
-    const sigParams = `("@method" "@authority" "@path" "signature-key");created=${created}`
-    const signatureBase = [
-      `"@method": POST`,
-      `"@authority": ${psUrl.host}`,
-      `"@path": ${psUrl.pathname}`,
-      `"signature-key": ${signatureKeyHeader}`,
-      `"@signature-params": ${sigParams}`,
-    ].join('\n')
-
-    const sigBytes = new Uint8Array(
-      await crypto.subtle.sign(
-        { name: 'Ed25519' },
-        ephemeralKeyPair.privateKey,
-        new TextEncoder().encode(signatureBase),
-      ),
-    )
-    let binary = ''
-    for (const b of sigBytes) binary += String.fromCharCode(b)
-    const sigB64 = btoa(binary)
-
-    const psRes = await fetch(tokenEndpoint, {
+    const psRes = await sigFetch(tokenEndpoint, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Signature-Input': `sig=${sigParams}`,
-        'Signature': `sig=:${sigB64}:`,
-        'Signature-Key': signatureKeyHeader,
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(psRequestBody),
+      signingCryptoKey: ephemeralKeyPair.privateKey,
+      signatureKey: { type: 'jwt', jwt: agentToken },
+      components: ['@method', '@authority', '@path', 'signature-key'],
     })
 
     // Capture response headers we care about
