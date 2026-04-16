@@ -16,6 +16,10 @@ function showLog() {
   document.getElementById('log-section').classList.remove('hidden')
 }
 
+function statusIndicator(status) {
+  return status === 'success' ? '\u2713' : status === 'pending' ? '\u2026' : '\u2717'
+}
+
 function addLogStep(label, status, content) {
   const log = document.getElementById('protocol-log')
   const step = document.createElement('details')
@@ -23,8 +27,7 @@ function addLogStep(label, status, content) {
   step.open = true
 
   const summary = document.createElement('summary')
-  const indicator = status === 'success' ? '\u2713' : status === 'pending' ? '\u2026' : '\u2717'
-  summary.innerHTML = `<span class="step-label">${indicator} ${label}</span>`
+  summary.innerHTML = `<span class="step-label">${statusIndicator(status)} ${label}</span>`
   step.appendChild(summary)
 
   const body = document.createElement('div')
@@ -35,6 +38,16 @@ function addLogStep(label, status, content) {
   log.appendChild(step)
   step.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
   return step
+}
+
+// Update an existing step's status + label in place (instead of removing it).
+// Lets a "pending" request entry stay visible after the response arrives, so
+// the user can still expand and inspect what was sent.
+function resolveStep(step, status, label) {
+  if (!step) return
+  step.className = `log-step ${status}`
+  const labelSpan = step.querySelector('.step-label')
+  if (labelSpan) labelSpan.textContent = `${statusIndicator(status)} ${label}`
 }
 
 function formatRequest(method, url, headers, body) {
@@ -121,7 +134,7 @@ async function startAuthorization() {
   const hints = getHints()
 
   // Step 1+2: Call our server to validate PS and create resource token
-  addLogStep('Requesting authorization...', 'pending',
+  const authzReqStep = addLogStep('POST /authorize', 'pending',
     formatRequest('POST', '/authorize', { 'Content-Type': 'application/json' }, {
       ps: psUrl, scope, agent_token: '(agent token)'
     })
@@ -140,8 +153,7 @@ async function startAuthorization() {
     authzData = await res.json()
 
     if (!res.ok) {
-      // Remove pending step, show error
-      document.getElementById('protocol-log').lastChild.remove()
+      resolveStep(authzReqStep, 'error', `POST /authorize \u2192 ${res.status}`)
       addLogStep('Authorization request failed', 'error',
         `<p style="color: var(--error)">${escapeHtml(authzData.error || 'Unknown error')}</p>` +
         (authzData.ps_metadata_url ? `<p>Tried: ${escapeHtml(authzData.ps_metadata_url)}</p>` : '')
@@ -149,14 +161,14 @@ async function startAuthorization() {
       return
     }
   } catch (err) {
-    document.getElementById('protocol-log').lastChild.remove()
+    resolveStep(authzReqStep, 'error', 'POST /authorize (network error)')
     addLogStep('Network error', 'error',
       `<p style="color: var(--error)">${escapeHtml(err.message)}</p>`)
     return
   }
 
-  // Remove pending step, show completed steps
-  document.getElementById('protocol-log').lastChild.remove()
+  // Request succeeded — keep the request entry visible, finalize its status
+  resolveStep(authzReqStep, 'success', 'POST /authorize \u2192 200')
 
   // Step 1: PS Discovery
   addLogStep('Discover Person Server', 'success',
@@ -186,7 +198,7 @@ async function startAuthorization() {
     ...hints,
   }
 
-  addLogStep('Calling Person Server...', 'pending',
+  const psReqStep = addLogStep(`POST ${new URL(tokenEndpoint).pathname}`, 'pending',
     formatRequest('POST', tokenEndpoint, {
       'Content-Type': 'application/json',
       'Signature-Input': 'sig=("@method" "@authority" "@path" "signature-key");created=...',
@@ -226,8 +238,11 @@ async function startAuthorization() {
       psBody = null
     }
 
-    // Remove pending step
-    document.getElementById('protocol-log').lastChild.remove()
+    // Resolve the request step in place (don't remove it — keep the
+    // request body visible alongside whatever response steps follow).
+    const psPath = new URL(tokenEndpoint).pathname
+    const reqStatus = psRes.ok ? 'success' : 'error'
+    resolveStep(psReqStep, reqStatus, `POST ${psPath} \u2192 ${psRes.status}`)
 
     if (psRes.status === 200 && psBody?.auth_token) {
       // Direct grant
@@ -251,14 +266,14 @@ async function startAuthorization() {
       }
       const pollUrl = psRes.headers.get('location') || psBody?.location
 
-      addLogStep('Interaction Required', 'pending',
+      const interactionStep = addLogStep('Interaction Required', 'pending',
         formatResponse(202, responseHeaders, psBody) +
         renderInteraction(interaction, pollUrl)
       )
 
       // Start polling if we have a poll URL
       if (pollUrl) {
-        startPolling(pollUrl, tokenEndpoint)
+        startPolling(pollUrl, tokenEndpoint, interactionStep)
       }
     } else {
       addLogStep('Person Server Response', psRes.ok ? 'success' : 'error',
@@ -266,9 +281,11 @@ async function startAuthorization() {
       )
     }
   } catch (err) {
-    document.getElementById('protocol-log').lastChild.remove()
+    // Network/CORS failure — finalize the request step as error and add
+    // a separate step with the diagnostic.
+    const psPath = new URL(tokenEndpoint).pathname
+    resolveStep(psReqStep, 'error', `POST ${psPath} (network error)`)
 
-    // Check for CORS error (typically shows as TypeError: Failed to fetch)
     const isCors = err instanceof TypeError && err.message.includes('fetch')
     addLogStep('Person Server Call Failed', 'error',
       `<p style="color: var(--error)">${escapeHtml(err.message)}</p>` +
@@ -342,7 +359,7 @@ function renderInteraction(interaction, pollUrl) {
 
 let pollInterval = null
 
-function startPolling(pollUrl, baseUrl) {
+function startPolling(pollUrl, baseUrl, interactionStep) {
   if (pollInterval) clearInterval(pollInterval)
 
   // Resolve relative poll URL against the PS base
@@ -356,6 +373,7 @@ function startPolling(pollUrl, baseUrl) {
         clearInterval(pollInterval)
         pollInterval = null
         const body = await res.json()
+        resolveStep(interactionStep, 'success', 'Interaction Completed')
         addLogStep('Authorization Granted', 'success',
           formatResponse(200, null, body) +
           (body.auth_token ? formatToken('Auth Token', body.auth_token,
@@ -364,11 +382,13 @@ function startPolling(pollUrl, baseUrl) {
       } else if (res.status === 403) {
         clearInterval(pollInterval)
         pollInterval = null
+        resolveStep(interactionStep, 'error', 'Interaction Denied')
         addLogStep('Authorization Denied', 'error',
           formatResponse(403, null, await res.json().catch(() => null)))
       } else if (res.status === 408) {
         clearInterval(pollInterval)
         pollInterval = null
+        resolveStep(interactionStep, 'error', 'Interaction Timed Out')
         addLogStep('Authorization Timed Out', 'error',
           formatResponse(408, null, null))
       }

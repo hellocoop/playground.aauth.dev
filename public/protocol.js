@@ -2835,14 +2835,16 @@
   function showLog() {
     document.getElementById("log-section").classList.remove("hidden");
   }
+  function statusIndicator(status) {
+    return status === "success" ? "\u2713" : status === "pending" ? "\u2026" : "\u2717";
+  }
   function addLogStep(label, status, content) {
     const log = document.getElementById("protocol-log");
     const step = document.createElement("details");
     step.className = `log-step ${status}`;
     step.open = true;
     const summary = document.createElement("summary");
-    const indicator = status === "success" ? "\u2713" : status === "pending" ? "\u2026" : "\u2717";
-    summary.innerHTML = `<span class="step-label">${indicator} ${label}</span>`;
+    summary.innerHTML = `<span class="step-label">${statusIndicator(status)} ${label}</span>`;
     step.appendChild(summary);
     const body = document.createElement("div");
     body.style.marginTop = "0.5rem";
@@ -2851,6 +2853,12 @@
     log.appendChild(step);
     step.scrollIntoView({ behavior: "smooth", block: "nearest" });
     return step;
+  }
+  function resolveStep(step, status, label) {
+    if (!step) return;
+    step.className = `log-step ${status}`;
+    const labelSpan = step.querySelector(".step-label");
+    if (labelSpan) labelSpan.textContent = `${statusIndicator(status)} ${label}`;
   }
   function formatRequest(method, url, headers, body) {
     let html = `<div class="token-display">${escapeHtml(method)} ${escapeHtml(url)}
@@ -2925,8 +2933,8 @@ ${renderJSON(body)}`;
       return;
     }
     const hints = getHints();
-    addLogStep(
-      "Requesting authorization...",
+    const authzReqStep = addLogStep(
+      "POST /authorize",
       "pending",
       formatRequest("POST", "/authorize", { "Content-Type": "application/json" }, {
         ps: psUrl,
@@ -2946,7 +2954,7 @@ ${renderJSON(body)}`;
       });
       authzData = await res.json();
       if (!res.ok) {
-        document.getElementById("protocol-log").lastChild.remove();
+        resolveStep(authzReqStep, "error", `POST /authorize \u2192 ${res.status}`);
         addLogStep(
           "Authorization request failed",
           "error",
@@ -2955,7 +2963,7 @@ ${renderJSON(body)}`;
         return;
       }
     } catch (err) {
-      document.getElementById("protocol-log").lastChild.remove();
+      resolveStep(authzReqStep, "error", "POST /authorize (network error)");
       addLogStep(
         "Network error",
         "error",
@@ -2963,7 +2971,7 @@ ${renderJSON(body)}`;
       );
       return;
     }
-    document.getElementById("protocol-log").lastChild.remove();
+    resolveStep(authzReqStep, "success", "POST /authorize \u2192 200");
     addLogStep(
       "Discover Person Server",
       "success",
@@ -2980,8 +2988,8 @@ ${renderJSON(body)}`;
       capabilities: ["interaction"],
       ...hints
     };
-    addLogStep(
-      "Calling Person Server...",
+    const psReqStep = addLogStep(
+      `POST ${new URL(tokenEndpoint).pathname}`,
       "pending",
       formatRequest("POST", tokenEndpoint, {
         "Content-Type": "application/json",
@@ -3012,7 +3020,9 @@ ${renderJSON(body)}`;
       } catch {
         psBody = null;
       }
-      document.getElementById("protocol-log").lastChild.remove();
+      const psPath = new URL(tokenEndpoint).pathname;
+      const reqStatus = psRes.ok ? "success" : "error";
+      resolveStep(psReqStep, reqStatus, `POST ${psPath} \u2192 ${psRes.status}`);
       if (psRes.status === 200 && psBody?.auth_token) {
         addLogStep(
           "Authorization Granted",
@@ -3032,13 +3042,13 @@ ${renderJSON(body)}`;
           url: fromHeader.url || authzData.ps_metadata?.interaction_endpoint
         };
         const pollUrl = psRes.headers.get("location") || psBody?.location;
-        addLogStep(
+        const interactionStep = addLogStep(
           "Interaction Required",
           "pending",
           formatResponse(202, responseHeaders, psBody) + renderInteraction(interaction, pollUrl)
         );
         if (pollUrl) {
-          startPolling(pollUrl, tokenEndpoint);
+          startPolling(pollUrl, tokenEndpoint, interactionStep);
         }
       } else {
         addLogStep(
@@ -3048,7 +3058,8 @@ ${renderJSON(body)}`;
         );
       }
     } catch (err) {
-      document.getElementById("protocol-log").lastChild.remove();
+      const psPath = new URL(tokenEndpoint).pathname;
+      resolveStep(psReqStep, "error", `POST ${psPath} (network error)`);
       const isCors = err instanceof TypeError && err.message.includes("fetch");
       addLogStep(
         "Person Server Call Failed",
@@ -3110,7 +3121,7 @@ ${renderJSON(body)}`;
     return html;
   }
   var pollInterval = null;
-  function startPolling(pollUrl, baseUrl) {
+  function startPolling(pollUrl, baseUrl, interactionStep) {
     if (pollInterval) clearInterval(pollInterval);
     const absolutePollUrl = new URL(pollUrl, baseUrl).href;
     pollInterval = setInterval(async () => {
@@ -3120,6 +3131,7 @@ ${renderJSON(body)}`;
           clearInterval(pollInterval);
           pollInterval = null;
           const body = await res.json();
+          resolveStep(interactionStep, "success", "Interaction Completed");
           addLogStep(
             "Authorization Granted",
             "success",
@@ -3132,6 +3144,7 @@ ${renderJSON(body)}`;
         } else if (res.status === 403) {
           clearInterval(pollInterval);
           pollInterval = null;
+          resolveStep(interactionStep, "error", "Interaction Denied");
           addLogStep(
             "Authorization Denied",
             "error",
@@ -3140,6 +3153,7 @@ ${renderJSON(body)}`;
         } else if (res.status === 408) {
           clearInterval(pollInterval);
           pollInterval = null;
+          resolveStep(interactionStep, "error", "Interaction Timed Out");
           addLogStep(
             "Authorization Timed Out",
             "error",
