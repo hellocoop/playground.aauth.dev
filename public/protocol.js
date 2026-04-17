@@ -2835,23 +2835,36 @@
   function showLog() {
     document.getElementById("log-section").classList.remove("hidden");
   }
-  function statusIndicator(status) {
-    return status === "success" ? "\u2713" : status === "pending" ? "\u2026" : "\u2717";
+  function statusIndicatorHtml(status) {
+    if (status === "pending") return '<span class="step-status step-status-pending">\u2026</span>';
+    if (status === "success") return '<span class="step-status step-status-success">\u2713</span>';
+    return '<span class="step-status step-status-error">\u2717</span>';
   }
   var CHEVRON_SVG = `<svg class="section-chevron" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5"/></svg>`;
   var __copyIdCounter = 0;
   function nextCopyId() {
     return `copy-tgt-${++__copyIdCounter}`;
   }
+  function formatUrlForDisplay(url) {
+    const idx = url.indexOf("?");
+    if (idx < 0) return escapeHtml(url);
+    const base = url.slice(0, idx);
+    const params = url.slice(idx + 1).split("&");
+    return escapeHtml(base) + "\n  ?" + params.map(escapeHtml).join("\n  &");
+  }
+  function isExpandable(content) {
+    return !!content && !/<details[\s>]/i.test(content);
+  }
   function addLogStep(label, status, content) {
     const log = document.getElementById("protocol-log");
-    const step = document.createElement("details");
-    step.className = `log-step section-group ${status}`;
-    step.open = true;
-    const summary = document.createElement("summary");
-    summary.className = "section-heading";
-    summary.innerHTML = `<span class="step-label">${statusIndicator(status)} ${label}</span>${CHEVRON_SVG}`;
-    step.appendChild(summary);
+    const expandable = isExpandable(content);
+    const step = expandable ? document.createElement("details") : document.createElement("div");
+    step.className = `log-step section-group ${status}${expandable ? "" : " log-step-static"}`;
+    if (expandable) step.open = true;
+    const heading = document.createElement(expandable ? "summary" : "div");
+    heading.className = "section-heading";
+    heading.innerHTML = `<span class="step-label">${statusIndicatorHtml(status)}<span class="step-text">${label}</span></span>${expandable ? CHEVRON_SVG : ""}`;
+    step.appendChild(heading);
     const body = document.createElement("div");
     body.style.marginTop = "0.5rem";
     body.innerHTML = content;
@@ -2864,9 +2877,12 @@
   }
   function resolveStep(step, status, label) {
     if (!step) return;
-    step.className = `log-step section-group ${status}`;
-    const labelSpan = step.querySelector(".step-label");
-    if (labelSpan) labelSpan.textContent = `${statusIndicator(status)} ${label}`;
+    const isStatic = step.classList.contains("log-step-static");
+    step.className = `log-step section-group ${status}${isStatic ? " log-step-static" : ""}`;
+    const statusEl = step.querySelector(".step-status");
+    const textEl = step.querySelector(".step-text");
+    if (statusEl) statusEl.outerHTML = statusIndicatorHtml(status);
+    if (textEl) textEl.textContent = label;
   }
   function tokenWrap(innerHtml, extraClass = "") {
     const id = nextCopyId();
@@ -3106,15 +3122,19 @@ ${renderJSON(body)}`;
     const callbackUrl = `${window.location.origin}/`;
     const fullUrl = `${interaction.url}?code=${encodeURIComponent(interaction.code)}&callback=${encodeURIComponent(callbackUrl)}`;
     const qrId = `qr-${Math.random().toString(36).slice(2, 9)}`;
+    const urlId = nextCopyId();
     const html = `
     <div class="interaction-box">
       <p>The Person Server requires user interaction.</p>
       <div class="interaction-code">${escapeHtml(interaction.code)}</div>
       <div class="interaction-actions">
         <a class="interaction-link" href="${escapeHtml(fullUrl)}">
-          Open Person Server &rarr;
+          Open Person Server &#x2197;
         </a>
-        <code class="interaction-url">${escapeHtml(fullUrl)}</code>
+        <div class="interaction-url-row">
+          <code class="interaction-url" id="${urlId}">${formatUrlForDisplay(fullUrl)}</code>
+          <button class="copy-btn" type="button" data-copy="${escapeHtml(fullUrl)}" aria-label="Copy"></button>
+        </div>
       </div>
       <div class="qr-code" id="${qrId}"></div>
       <p class="qr-caption">Or scan with another device to continue</p>

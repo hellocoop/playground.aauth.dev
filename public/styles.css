@@ -225,9 +225,8 @@ label { font-size: 0.85rem; color: var(--muted); display: block; margin-bottom: 
   -webkit-backdrop-filter: blur(4px);
   border-radius: 6px;
   color: #303030;
-  opacity: 1;
 }
-.copy-btn-float:hover { background: rgba(255, 255, 255, 0.75); opacity: 1; }
+.copy-btn-float:hover { background: rgba(255, 255, 255, 0.75); }
 @media (prefers-color-scheme: dark) {
   .copy-btn-float { background: rgba(48, 48, 48, 0.5); color: #d4d4d4; }
   .copy-btn-float:hover { background: rgba(48, 48, 48, 0.75); }
@@ -363,7 +362,15 @@ a { color: var(--accent); }
 }
 .log-step .step-label {
   font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
 }
+.step-status { font-weight: 700; }
+.step-status-success { color: var(--success); }
+.step-status-error { color: var(--error); }
+.step-status-pending { color: #eab308; }
+.log-step-static > .section-heading { cursor: default; }
 
 /* Section box (fieldset with inset legend) */
 .section-box {
@@ -436,8 +443,8 @@ a { color: var(--accent); }
 
 /* Interaction */
 .interaction-box {
-  background: rgba(99, 102, 241, 0.1);
-  border: 1px solid var(--accent);
+  background: rgba(64, 217, 123, 0.1);
+  border: 1px solid #40d97b;
   border-radius: 4px;
   padding: 1rem;
   margin-top: 0.75rem;
@@ -465,14 +472,24 @@ a { color: var(--accent); }
   border-radius: 4px;
   font-size: 0.9rem;
   font-weight: 500;
+  transition: background 0.2s;
 }
 .interaction-link:hover { background: #2dbb63; }
+.interaction-url-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.25rem;
+  justify-content: center;
+  margin-top: 0.75rem;
+  max-width: 100%;
+}
 .interaction-url {
   font-family: 'SF Mono', 'Fira Code', monospace;
   font-size: 0.75rem;
   color: var(--muted);
   word-break: break-all;
-  max-width: 100%;
+  text-align: left;
+  white-space: pre-wrap;
 }
 .qr-code {
   margin: 1rem auto 0.5rem;
