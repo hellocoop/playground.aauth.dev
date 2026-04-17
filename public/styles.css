@@ -37,6 +37,11 @@ body {
   display: block;
 }
 .container > .section:first-child { margin-top: 0; }
+@media (max-width: 640px) {
+  .container { padding: 0.75rem 0.75rem 1.5rem; }
+  .card,
+  .section-box { padding-left: 1rem; padding-right: 1rem; }
+}
 
 /* Top bar — same layout as playground.hello.dev header */
 .site-header {
