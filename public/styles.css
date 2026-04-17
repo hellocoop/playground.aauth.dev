@@ -375,7 +375,21 @@ a { color: var(--accent); }
 .step-status { font-weight: 700; }
 .step-status-success { color: var(--success); }
 .step-status-error { color: var(--error); }
-.step-status-pending { color: #eab308; }
+.step-status-pending { color: #eab308; display: inline-flex; align-items: center; gap: 3px; }
+.step-status-pending .dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.25;
+  animation: step-dot-pulse 1.2s ease-in-out infinite;
+}
+.step-status-pending .dot:nth-child(2) { animation-delay: 0.2s; }
+.step-status-pending .dot:nth-child(3) { animation-delay: 0.4s; }
+@keyframes step-dot-pulse {
+  0%, 80%, 100% { opacity: 0.25; }
+  40% { opacity: 1; }
+}
 .log-step-static > .section-heading { cursor: default; }
 
 /* Section box (fieldset with inset legend) */

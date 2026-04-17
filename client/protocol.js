@@ -17,7 +17,9 @@ function showLog() {
 }
 
 function statusIndicatorHtml(status) {
-  if (status === 'pending') return '<span class="step-status step-status-pending">\u2026</span>'
+  if (status === 'pending') {
+    return '<span class="step-status step-status-pending"><span class="dot"></span><span class="dot"></span><span class="dot"></span></span>'
+  }
   if (status === 'success') return '<span class="step-status step-status-success">\u2713</span>'
   return '<span class="step-status step-status-error">\u2717</span>'
 }
