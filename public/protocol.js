@@ -3127,8 +3127,12 @@ ${renderJSON(body)}`;
           <button class="copy-btn" type="button" data-copy="${escapeHtml(fullUrl)}" aria-label="Copy"></button>
         </div>
       </div>
+      <div class="interaction-or"><span>OR</span></div>
+      <p class="qr-caption">Scan with another device to continue</p>
       <div class="qr-code" id="${qrId}"></div>
-      <p class="qr-caption">Or scan with another device to continue</p>
+      <div class="interaction-approved" aria-hidden="true">
+        <svg class="interaction-check" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/></svg>
+      </div>
     </div>
   `;
     setTimeout(() => {
@@ -3253,4 +3257,70 @@ ${renderJSON(body)}`;
     }
   }
   document.getElementById("authz-btn").addEventListener("click", startAuthorization);
+  var __debugState = new URLSearchParams(location.search).get("debug");
+  if (__debugState === "interaction" || __debugState === "approved") {
+    const dummyPs = "https://issuer.hello-beta.net";
+    const dummyMeta = {
+      issuer: dummyPs,
+      token_endpoint: `${dummyPs}/token`,
+      interaction_endpoint: `${dummyPs}/aauth/pending`,
+      jwks_uri: `${dummyPs}/.well-known/jwks.json`
+    };
+    const dummyDecoded = {
+      iss: "https://playground.aauth.dev",
+      sub: "aauth:merry-glen-fan@playground.aauth.dev",
+      aud: dummyPs,
+      scope: "openid profile",
+      iat: 1776434978,
+      exp: 1776438578
+    };
+    const dummyResourceToken = "eyJhbGciOiJFZERTQSIsInR5cCI6ImFhLXJlc291cmNlK2p3dCJ9.eyJpc3MiOiJodHRwczovL3BsYXlncm91bmQuYWF1dGguZGV2IiwiYXVkIjoiaHR0cHM6Ly9pc3N1ZXIuaGVsbG8tYmV0YS5uZXQiLCJzdWIiOiJhYXV0aDptZXJyeS1nbGVuLWZhbkBwbGF5Z3JvdW5kLmFhdXRoLmRldiJ9.DUMMYSIGNATURE";
+    showLog();
+    addLogStep(
+      "POST /authorize",
+      "success",
+      formatRequest("POST", "/authorize", { "Content-Type": "application/json" }, { scope: "openid profile", ps: dummyPs }) + '<label style="margin-top: 0.5rem;">Response</label>' + formatResponse(200, null, { ps_metadata: dummyMeta })
+    );
+    addLogStep(
+      "Discover Person Server",
+      "success",
+      formatRequest("GET", `${dummyPs}/.well-known/aauth-resource.json`, null, null) + '<label style="margin-top: 0.5rem;">Response</label>' + formatResponse(200, null, dummyMeta)
+    );
+    addLogStep(
+      "Resource Token Created",
+      "success",
+      formatToken("Resource Token (aa-resource+jwt)", dummyResourceToken, dummyDecoded)
+    );
+    addLogStep(
+      "POST /token",
+      "success",
+      formatRequest("POST", dummyMeta.token_endpoint, { "Content-Type": "application/json" }, { resource_token: dummyResourceToken }) + '<label style="margin-top: 0.5rem;">Response</label>' + formatResponse(202, { "aauth-requirement": `interaction; code="DEMO1234"` }, { requirement: "interaction", code: "DEMO1234" })
+    );
+    const interactionStep = addLogStep(
+      "Interaction Required",
+      "pending",
+      renderInteraction(
+        { requirement: "interaction", code: "DEMO1234", url: dummyMeta.interaction_endpoint },
+        `${dummyPs}/aauth/pending/DEMO1234`
+      )
+    );
+    if (__debugState === "approved") {
+      resolveStep(interactionStep, "success", "Interaction Completed");
+      const dummyAuthDecoded = {
+        iss: dummyPs,
+        sub: "hello:abc123",
+        aud: "https://playground.aauth.dev",
+        agent: "aauth:merry-glen-fan@playground.aauth.dev",
+        scope: "openid profile",
+        iat: 1776434978,
+        exp: 1776438578
+      };
+      const dummyAuthToken = "eyJhbGciOiJFZERTQSIsInR5cCI6ImFhLWF1dGgrand0In0.eyJpc3MiOiJodHRwczovL2lzc3Vlci5oZWxsby1iZXRhLm5ldCIsInN1YiI6ImhlbGxvOmFiYzEyMyIsImF1ZCI6Imh0dHBzOi8vcGxheWdyb3VuZC5hYXV0aC5kZXYiLCJhZ2VudCI6ImFhdXRoOm1lcnJ5LWdsZW4tZmFuQHBsYXlncm91bmQuYWF1dGguZGV2Iiwic2NvcGUiOiJvcGVuaWQgcHJvZmlsZSIsImlhdCI6MTc3NjQzNDk3OCwiZXhwIjoxNzc2NDM4NTc4fQ.DUMMYSIGNATURE";
+      addLogStep(
+        "Authorization Granted",
+        "success",
+        formatResponse(200, null, { auth_token: dummyAuthToken }) + formatToken("Auth Token", dummyAuthToken, dummyAuthDecoded)
+      );
+    }
+  }
 })();

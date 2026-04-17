@@ -613,9 +613,10 @@ document.addEventListener('click', (e) => {
 loadSettings()
 wireSettingsAutosave()
 
-// Debug: `?debug=authed` forces the authenticated UI state without a real session.
-// UI-only — no token is minted, backend requests will fail.
-if (new URLSearchParams(location.search).get('debug') === 'authed') {
+// Debug: `?debug=authed` or `?debug=interaction` force the authenticated UI
+// state without a real session. UI-only — backend calls will fail.
+const debugMode = new URLSearchParams(location.search).get('debug')
+if (debugMode === 'authed' || debugMode === 'interaction' || debugMode === 'approved') {
   const sampleAgentId = 'aauth:merry-glen-fan@playground.aauth.dev'
   const sampleToken =
     'eyJhbGciOiJFZERTQSIsInR5cCI6ImFhLWFnZW50K2p3dCIsImtpZCI6IlJlUERyMnU0aEdkRmo0NE8zRTZxMmFjSUpnNW1tM1lJWklMdTBKZ1o1Wm8ifQ.' +
