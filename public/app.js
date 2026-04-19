@@ -433,7 +433,7 @@ function enableAuthzSection() {
 
 const SETTINGS_KEY = 'aauth-playground-settings'
 const HINT_FIELDS = ['login-hint', 'domain-hint', 'provider-hint', 'tenant']
-const DEFAULT_PS = 'https://issuer.hello-beta.net'
+const DEFAULT_PS = 'https://person.hello-beta.net'
 
 function loadSettings() {
   let saved = {}
