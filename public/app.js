@@ -301,17 +301,16 @@ window.aauthWebAuthn = {
 
 function setAuthenticated(label) {
   document.documentElement.classList.remove('show-auth')
+  document.getElementById('auth-form').classList.add('hidden')
   document.getElementById('auth-info').classList.remove('hidden')
   document.getElementById('auth-user').textContent = label
-  document.getElementById('token-section').classList.remove('disabled')
-  document.getElementById('agent-id-row').classList.remove('hidden')
-  document.getElementById('authz-btn').classList.remove('hidden')
+  document.getElementById('token-section').classList.remove('hidden')
 }
 
 function setUnauthenticated() {
+  document.getElementById('auth-form').classList.remove('hidden')
   document.getElementById('auth-info').classList.add('hidden')
-  document.getElementById('token-section').classList.add('disabled')
-  document.getElementById('agent-id-row').classList.add('hidden')
+  document.getElementById('token-section').classList.add('hidden')
   // Authz section stays enabled — Continue triggers bootstrap.
 }
 
