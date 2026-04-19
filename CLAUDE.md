@@ -2,21 +2,23 @@
 
 ## Deployment
 
-**Do not run `wrangler deploy` manually.** Cloudflare Workers is wired to
-a Git trigger on this repo: pushing to `main` auto-deploys. Running
-`wrangler deploy` in addition just creates a redundant deployment.
+**Do not run `wrangler deploy` manually.** Cloudflare Workers Builds is
+connected to this repo and auto-deploys on every push to `main`. The
+build runs `npm run build:client` (bundles `client/protocol.js` into
+`public/protocol.js`), then `npx wrangler deploy`.
 
 To ship a change:
 
 1. Commit locally.
 2. `git push origin main`.
-3. Verify the live site picked it up:
+3. Verify (usually live within a minute):
    ```bash
    curl -s https://playground.aauth.dev/.well-known/aauth-agent.json | jq .
    ```
-4. Check deployment history if needed: `npx wrangler deployments list`.
 
-Auto-deploy can take a minute or two after the push lands.
+Check deployment history with `npx wrangler deployments list`. If an
+auto-deploy fails, the dashboard (Workers & Pages → playground-aauth-dev
+→ Deployments) shows build logs.
 
 ## Local development
 
