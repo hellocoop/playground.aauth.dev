@@ -494,8 +494,12 @@ async function hydrateResourceScopes() {
     // Fall through — resource-scope grid renders empty.
   }
   const scopes = Object.keys(descriptions).sort()
+  // Pre-check everything the resource advertises. Saner default for a demo
+  // with a single scope (one click to Continue) and for most real flows
+  // (agent is asking for this set, the user will typically consent); user
+  // can uncheck anything they don't want to grant.
   grid.innerHTML = scopes
-    .map((s) => renderScopeRow(s, descriptions[s]))
+    .map((s) => renderScopeRow(s, descriptions[s], { checked: true }))
     .join('')
 }
 
