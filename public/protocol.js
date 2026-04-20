@@ -2987,7 +2987,7 @@ ${renderJSON(body)}`;
     }
     return hints;
   }
-  async function runBootstrap(psUrl, scope, hints) {
+  async function runBootstrap(psUrl, scope, resourceScope, resourceUrl, hints) {
     const agentServerOrigin = window.location.origin;
     addLogSection("Bootstrap");
     const { keyPair, publicJwk } = await window.aauthEphemeral.rotate();
@@ -3026,6 +3026,8 @@ ${renderJSON(body)}`;
     const psBootstrapBody = {
       agent_server: agentServerOrigin,
       scope,
+      resource_scope: resourceScope || void 0,
+      resource_url: resourceUrl || void 0,
       ...hints
     };
     const psBootReqStep = addLogStep(
@@ -3452,7 +3454,7 @@ ${renderJSON(body)}`;
     if (!haveUsableBinding) {
       window.aauthBinding.clearBinding();
       localStorage.removeItem("aauth-agent-token");
-      const ok = await runBootstrap(psUrl, identityScope, hints);
+      const ok = await runBootstrap(psUrl, identityScope, resourceScope, window.location.origin, hints);
       if (!ok) return;
       if (ok.authTokenFromPending) return;
     } else if (!agentTokenValid) {

@@ -204,11 +204,12 @@ function getHints() {
 // resource_token). Runs once per (PS, user) pair; the resulting binding_key
 // is stored in localStorage so /refresh can reuse the same credentials.
 
-// `scope` here is IDENTITY scope — what user claims the PS should release
-// at bootstrap (openid/profile/email/...). The PS requires at least one,
-// since bootstrap is where the user consents to identity sharing. Resource
-// scope is a separate concept and flows through /authorize instead.
-async function runBootstrap(psUrl, scope, hints) {
+// Bootstrap carries BOTH axes the user is consenting to:
+// - `scope` (identity) — what user claims the PS should release.
+// - `resourceScope` + `resourceUrl` — operations at this resource the
+//    agent will perform. Surfacing both at bootstrap gives the user a
+//    single combined consent screen.
+async function runBootstrap(psUrl, scope, resourceScope, resourceUrl, hints) {
   const agentServerOrigin = window.location.origin
 
   addLogSection('Bootstrap')
@@ -251,6 +252,8 @@ async function runBootstrap(psUrl, scope, hints) {
   const psBootstrapBody = {
     agent_server: agentServerOrigin,
     scope,
+    resource_scope: resourceScope || undefined,
+    resource_url: resourceUrl || undefined,
     ...hints,
   }
   const psBootReqStep = addLogStep(`POST ${new URL(bootstrapEndpoint).pathname}`, 'pending',
@@ -702,7 +705,7 @@ async function startAuthorization() {
     // Full bootstrap — also drops any stale binding/token.
     window.aauthBinding.clearBinding()
     localStorage.removeItem('aauth-agent-token')
-    const ok = await runBootstrap(psUrl, identityScope, hints)
+    const ok = await runBootstrap(psUrl, identityScope, resourceScope, window.location.origin, hints)
     if (!ok) return
     // If bootstrap already produced an auth_token (PS bundled it into the
     // pending response), we're done — no need to hit PS /token, which
