@@ -3305,9 +3305,8 @@ ${renderJSON(body)}`;
       addLogStep(
         "Authorization Granted (from bootstrap)",
         "success",
-        `<p>The PS returned an <code>auth_token</code> alongside the bootstrap_token in the pending response. Skipping the PS /token round trip.</p>` + formatAuthToken(ctx.authTokenFromPending)
+        `<p>The PS returned an <code>auth_token</code> alongside the bootstrap_token in the pending response. Skipping the PS /token round trip.</p>` + formatAuthToken(ctx.authTokenFromPending) + anotherRequestButton()
       );
-      await callDemoResourceApi(ctx.authTokenFromPending);
     }
     return { result, authTokenFromPending: ctx.authTokenFromPending || null };
   }
@@ -3562,9 +3561,8 @@ ${renderJSON(body)}`;
         addLogStep(
           "Authorization Granted",
           "success",
-          formatAuthToken(psBody.auth_token)
+          formatAuthToken(psBody.auth_token) + anotherRequestButton()
         );
-        await callDemoResourceApi(psBody.auth_token);
       } else if (psRes.status === 202) {
         const reqHeader = psRes.headers.get("aauth-requirement") || "";
         const fromHeader = parseInteractionHeader(reqHeader);
@@ -3816,9 +3814,8 @@ ${renderJSON(body)}`;
           addLogStep(
             "Authorization Granted",
             "success",
-            body.auth_token ? formatAuthToken(body.auth_token) : anotherRequestButton()
+            (body.auth_token ? formatAuthToken(body.auth_token) : "") + anotherRequestButton()
           );
-          if (body.auth_token) await callDemoResourceApi(body.auth_token);
           return;
         }
         if (res.status === 403 || res.status === 408) {

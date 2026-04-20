@@ -538,11 +538,10 @@ async function completeAgentServerBootstrap(bootstrapToken, publicJwk, keyPair, 
     addLogSection('Authorization')
     addLogStep('Authorization Granted (from bootstrap)', 'success',
       `<p>The PS returned an <code>auth_token</code> alongside the bootstrap_token in the pending response. Skipping the PS /token round trip.</p>` +
-      formatAuthToken(ctx.authTokenFromPending)
+      formatAuthToken(ctx.authTokenFromPending) +
+      anotherRequestButton()
     )
-    // "Another Authorization Request" button is attached to the final demo-call
-    // step below so it reads as the natural end of the flow.
-    await callDemoResourceApi(ctx.authTokenFromPending)
+    // await callDemoResourceApi(ctx.authTokenFromPending)
   }
 
   return { result, authTokenFromPending: ctx.authTokenFromPending || null }
@@ -822,9 +821,10 @@ async function runAuthorizationAgainstPS(psUrl, scope, hints) {
 
     if (psRes.status === 200 && psBody?.auth_token) {
       addLogStep('Authorization Granted', 'success',
-        formatAuthToken(psBody.auth_token)
+        formatAuthToken(psBody.auth_token) +
+        anotherRequestButton()
       )
-      await callDemoResourceApi(psBody.auth_token)
+      // await callDemoResourceApi(psBody.auth_token)
     } else if (psRes.status === 202) {
       // Interaction required. This can still happen on a scope upgrade.
       const reqHeader = psRes.headers.get('aauth-requirement') || ''
@@ -1103,10 +1103,9 @@ async function startAuthTokenPolling(pollUrl, baseUrl, interactionStep) {
         resolveStep(pollStep, 'success', `GET ${pollPath} \u2192 200`)
         resolveStep(interactionStep, 'success', 'Interaction Completed')
         addLogStep('Authorization Granted', 'success',
-          body.auth_token
-            ? formatAuthToken(body.auth_token)
-            : anotherRequestButton())
-        if (body.auth_token) await callDemoResourceApi(body.auth_token)
+          (body.auth_token ? formatAuthToken(body.auth_token) : '') +
+          anotherRequestButton())
+        // if (body.auth_token) await callDemoResourceApi(body.auth_token)
         return
       }
       if (res.status === 403 || res.status === 408) {

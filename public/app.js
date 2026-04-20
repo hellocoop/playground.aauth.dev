@@ -446,7 +446,7 @@ function enableAuthzSection() {
 
 const IDENTITY_SCOPES = [
   { name: 'openid',      description: 'Verify your identity',            required: true },
-  { name: 'profile',     description: 'Access your profile information' },
+  { name: 'profile',     description: 'Access your profile information', checked: true },
   { name: 'name',        description: 'Access your full name' },
   { name: 'email',       description: 'Access your email address' },
   { name: 'picture',     description: 'Access your profile picture' },
@@ -475,7 +475,7 @@ function hydrateIdentityScopes() {
   if (!grid) return
   grid.innerHTML = IDENTITY_SCOPES.map((s) =>
     renderScopeRow(s.name, s.description, {
-      checked: !!s.required,
+      checked: !!s.required || !!s.checked,
       disabled: !!s.required,
       required: !!s.required,
     }),
