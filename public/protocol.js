@@ -3127,7 +3127,7 @@ ${renderJSON(body)}`;
   }
   async function completeAgentServerBootstrap(bootstrapToken, publicJwk, keyPair, ctx = {}) {
     clearPendingBootstrap();
-    const agentLocal = localStorage.getItem("aauth-agent-name") || "";
+    const agentLocal = window.aauthGetOrGenerateAgentName();
     const challengeReqStep = addLogStep(
       "POST /bootstrap/challenge",
       "pending",

@@ -154,7 +154,10 @@ function generateAgentName() {
   return `${adj}-${noun}-${verb}`
 }
 
-function getAgentName() {
+// Return the stored agent name, or generate + persist a fresh one. Called
+// from protocol.js at bootstrap time — not on page load — so a fresh
+// install or post-Reset page shows no name until bootstrap actually runs.
+function getOrGenerateAgentName() {
   let name = localStorage.getItem('aauth-agent-name')
   if (!name) {
     name = generateAgentName()
@@ -162,6 +165,7 @@ function getAgentName() {
   }
   return name
 }
+window.aauthGetOrGenerateAgentName = getOrGenerateAgentName
 
 // ── JWT helpers ──
 
@@ -532,9 +536,6 @@ function wireSettingsAutosave() {
 }
 
 // ── Initialization ──
-
-const agentName = getAgentName()
-document.getElementById('agent-name').textContent = agentName
 
 // Restore PS / scopes / hints from localStorage and start auto-saving on edit
 loadSettings()

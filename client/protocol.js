@@ -348,7 +348,9 @@ async function completeAgentServerBootstrap(bootstrapToken, publicJwk, keyPair, 
   // Pass the generated three-word handle so the server can mint
   // aauth:{handle}@host on first bootstrap for this (PS, user). Ignored
   // on subsequent bootstraps — server uses the binding's stored aauth_sub.
-  const agentLocal = localStorage.getItem('aauth-agent-name') || ''
+  // Lazy generation: no name exists on a fresh install or post-Reset
+  // until we actually need one here.
+  const agentLocal = window.aauthGetOrGenerateAgentName()
   const challengeReqStep = addLogStep('POST /bootstrap/challenge', 'pending',
     formatRequest('POST', '/bootstrap/challenge', { 'Content-Type': 'application/json' }, {
       bootstrap_token: bootstrapToken.substring(0, 20) + '...',
