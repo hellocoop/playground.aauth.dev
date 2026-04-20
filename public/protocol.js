@@ -3440,21 +3440,29 @@ ${renderJSON(body)}`;
       return;
     }
     addLogSection("Authorization");
+    const authzEndpoint = `${window.location.origin}/authorize`;
+    const authzBody = { ps: psUrl, scope };
+    const signingJwk = await crypto.subtle.exportKey("jwk", keyPair.publicKey);
     const authzReqStep = addLogStep(
-      "POST /authorize",
+      `POST ${new URL(authzEndpoint).pathname}`,
       "pending",
-      formatRequest("POST", "/authorize", { "Content-Type": "application/json" }, {
-        ps: psUrl,
-        scope,
-        agent_token: "(agent token)"
-      })
+      formatRequest("POST", authzEndpoint, {
+        "Content-Type": "application/json",
+        "Signature-Input": 'sig=("@method" "@authority" "@path" "content-type" "signature-key");created=...',
+        "Signature": "sig=:...:",
+        "Signature-Key": `sig=jwt;jwt="${agentToken?.substring(0, 20)}..."`
+      }, authzBody)
     );
     let authzData;
     try {
-      const res = await fetch("/authorize", {
+      const res = await (0, import_httpsig.fetch)(authzEndpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ps: psUrl, scope, agent_token: agentToken })
+        body: JSON.stringify(authzBody),
+        signingKey: signingJwk,
+        signingCryptoKey: keyPair.privateKey,
+        signatureKey: { type: "jwt", jwt: agentToken },
+        components: ["@method", "@authority", "@path", "content-type", "signature-key"]
       });
       authzData = await res.json();
       if (!res.ok) {
@@ -3492,12 +3500,12 @@ ${renderJSON(body)}`;
       }, psRequestBody)
     );
     try {
-      const signingJwk = await crypto.subtle.exportKey("jwk", keyPair.publicKey);
+      const signingJwk2 = await crypto.subtle.exportKey("jwk", keyPair.publicKey);
       const psRes = await (0, import_httpsig.fetch)(tokenEndpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(psRequestBody),
-        signingKey: signingJwk,
+        signingKey: signingJwk2,
         signingCryptoKey: keyPair.privateKey,
         signatureKey: { type: "jwt", jwt: agentToken },
         components: ["@method", "@authority", "@path", "signature-key"]

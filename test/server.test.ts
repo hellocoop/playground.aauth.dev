@@ -226,16 +226,31 @@ describe('POST /authorize', () => {
     return { agentToken: body.agent_token, ephemeralJwk: ephemeral }
   }
 
+  // Helper: build the Signature-Key header value for the sig=jwt scheme.
+  const sigKeyJwt = (t: string) => `sig=jwt;jwt="${t}"`
+
   it('rejects missing required fields', async () => {
     const app = await loadApp()
     const { env, kv } = await makeEnv()
-    await kv.put('session:s1', JSON.stringify({ username: 'alice' }))
+    const { agentToken } = await mintAgentToken(app, env, kv)
     const res = await app.request('/authorize', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Signature-Key': sigKeyJwt(agentToken) },
       body: JSON.stringify({ ps: 'https://ps.test' }),
     }, env)
     expect(res.status).toBe(400)
+  })
+
+  it('rejects when Signature-Key header is missing', async () => {
+    const app = await loadApp()
+    const { env } = await makeEnv()
+    const res = await app.request('/authorize', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ps: 'https://ps.test', scope: 'openid' }),
+    }, env)
+    expect(res.status).toBe(401)
+    expect((await res.json() as any).error).toMatch(/Signature-Key/)
   })
 
   it('rejects invalid agent_token', async () => {
@@ -243,8 +258,8 @@ describe('POST /authorize', () => {
     const { env } = await makeEnv()
     const res = await app.request('/authorize', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ps: 'https://ps.test', scope: 'openid', agent_token: 'not.a.jwt' }),
+      headers: { 'Content-Type': 'application/json', 'Signature-Key': sigKeyJwt('not.a.jwt') },
+      body: JSON.stringify({ ps: 'https://ps.test', scope: 'openid' }),
     }, env)
     expect(res.status).toBe(401)
   })
@@ -255,8 +270,8 @@ describe('POST /authorize', () => {
     const { agentToken } = await mintAgentToken(app, env, kv)
     const res = await app.request('/authorize', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Session-Id': 's1' },
-      body: JSON.stringify({ ps: 'http://ps.test', scope: 'openid', agent_token: agentToken }),
+      headers: { 'Content-Type': 'application/json', 'Signature-Key': sigKeyJwt(agentToken) },
+      body: JSON.stringify({ ps: 'http://ps.test', scope: 'openid' }),
     }, env)
     expect(res.status).toBe(400)
     expect((await res.json() as any).error).toMatch(/HTTPS/)
@@ -269,8 +284,8 @@ describe('POST /authorize', () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response('nope', { status: 404 })))
     const res = await app.request('/authorize', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Session-Id': 's1' },
-      body: JSON.stringify({ ps: 'https://ps.test', scope: 'openid', agent_token: agentToken }),
+      headers: { 'Content-Type': 'application/json', 'Signature-Key': sigKeyJwt(agentToken) },
+      body: JSON.stringify({ ps: 'https://ps.test', scope: 'openid' }),
     }, env)
     expect(res.status).toBe(502)
     vi.unstubAllGlobals()
@@ -286,8 +301,8 @@ describe('POST /authorize', () => {
     })))
     const res = await app.request('/authorize', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Session-Id': 's1' },
-      body: JSON.stringify({ ps: 'https://ps.test', scope: 'openid', agent_token: agentToken }),
+      headers: { 'Content-Type': 'application/json', 'Signature-Key': sigKeyJwt(agentToken) },
+      body: JSON.stringify({ ps: 'https://ps.test', scope: 'openid' }),
     }, env)
     expect(res.status).toBe(502)
     expect((await res.json() as any).error).toMatch(/missing required/)
@@ -314,11 +329,10 @@ describe('POST /authorize', () => {
 
     const res = await app.request('/authorize', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Session-Id': 's1' },
+      headers: { 'Content-Type': 'application/json', 'Signature-Key': sigKeyJwt(agentToken) },
       body: JSON.stringify({
         ps: 'https://ps.test',
         scope: 'openid profile',
-        agent_token: agentToken,
       }),
     }, env)
 

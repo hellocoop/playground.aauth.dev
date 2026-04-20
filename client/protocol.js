@@ -681,21 +681,33 @@ async function runAuthorizationAgainstPS(psUrl, scope, hints) {
 
   addLogSection('Authorization')
 
-  // Mint a fresh resource_token via /authorize for the currently selected
-  // scope. /authorize now authenticates via agent_token signature (no
-  // session required), which means every Continue click can request a
-  // different scope against the same binding.
-  const authzReqStep = addLogStep('POST /authorize', 'pending',
-    formatRequest('POST', '/authorize', { 'Content-Type': 'application/json' }, {
-      ps: psUrl, scope, agent_token: '(agent token)'
-    })
+  // Mint a fresh resource_token via /authorize. This is an httpsig call
+  // (RFC 9421) signed by the ephemeral key, with the agent_token carried
+  // in Signature-Key: sig=jwt — mirrors how we call the PS /token. The
+  // agent_token is authentication, not request data, so it belongs in a
+  // header, not the body.
+  const authzEndpoint = `${window.location.origin}/authorize`
+  const authzBody = { ps: psUrl, scope }
+  const signingJwk = await crypto.subtle.exportKey('jwk', keyPair.publicKey)
+
+  const authzReqStep = addLogStep(`POST ${new URL(authzEndpoint).pathname}`, 'pending',
+    formatRequest('POST', authzEndpoint, {
+      'Content-Type': 'application/json',
+      'Signature-Input': 'sig=("@method" "@authority" "@path" "content-type" "signature-key");created=...',
+      'Signature': 'sig=:...:',
+      'Signature-Key': `sig=jwt;jwt="${agentToken?.substring(0, 20)}..."`,
+    }, authzBody)
   )
   let authzData
   try {
-    const res = await fetch('/authorize', {
+    const res = await sigFetch(authzEndpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ps: psUrl, scope, agent_token: agentToken }),
+      body: JSON.stringify(authzBody),
+      signingKey: signingJwk,
+      signingCryptoKey: keyPair.privateKey,
+      signatureKey: { type: 'jwt', jwt: agentToken },
+      components: ['@method', '@authority', '@path', 'content-type', 'signature-key'],
     })
     authzData = await res.json()
     if (!res.ok) {

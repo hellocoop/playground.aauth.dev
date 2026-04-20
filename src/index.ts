@@ -459,20 +459,30 @@ app.post('/authorize', async (c) => {
   const body = await c.req.json<{
     ps: string
     scope: string
-    agent_token: string
   }>()
 
-  if (!body.ps || !body.scope || !body.agent_token) {
-    return c.json({ error: 'missing required fields: ps, scope, agent_token' }, 400)
+  if (!body.ps || !body.scope) {
+    return c.json({ error: 'missing required fields: ps, scope' }, 400)
   }
 
-  // Authenticate the caller via the agent_token (we issued it, so we can
-  // verify against our own JWKS). Accepts either bootstrap-minted or the
-  // legacy session-minted token — both carry iss == our origin.
+  // Authenticate the caller via the agent_token carried in Signature-Key
+  // (sig=jwt scheme, RFC 9421 HTTP Message Signatures). Extract the JWT,
+  // then verify against our own JWKS — we issued it, so iss == our origin.
+  //
+  // Future hardening: also verify the full HTTP message signature (ties
+  // the specific request to the cnf-bound ephemeral key). For now we
+  // just verify the agent_token itself, matching the pre-existing trust
+  // model for this endpoint.
+  const sigKeyHeader = c.req.header('Signature-Key') || ''
+  const jwtMatch = sigKeyHeader.match(/sig=jwt\s*;\s*jwt\s*=\s*"([^"]+)"/)
+  if (!jwtMatch) {
+    return c.json({ error: 'missing Signature-Key: sig=jwt' }, 401)
+  }
+  const agentToken = jwtMatch[1]
   const origin = c.env.ORIGIN
   try {
     const publicJwk = await getPublicJWK(c.env.SIGNING_KEY)
-    const { payload } = await verifyJWT(body.agent_token, { keys: [publicJwk] })
+    const { payload } = await verifyJWT(agentToken, { keys: [publicJwk] })
     if (payload.iss !== origin) return c.json({ error: 'agent_token iss mismatch' }, 401)
     const now = Math.floor(Date.now() / 1000)
     if (!payload.exp || (payload.exp as number) < now) return c.json({ error: 'agent_token expired' }, 401)
@@ -519,7 +529,7 @@ app.post('/authorize', async (c) => {
   }
 
   // Step 2: Create resource token
-  const agentPayload = decodeJWTPayload(body.agent_token)
+  const agentPayload = decodeJWTPayload(agentToken)
   const agentJkt = await computeJwkThumbprint(
     (agentPayload.cnf as { jwk: JsonWebKey }).jwk
   )
