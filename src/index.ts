@@ -30,28 +30,15 @@ const app = new Hono<HonoEnv>()
 
 app.use('*', cors())
 
-// ── Scope metadata ──
+// ── Resource scope metadata ──
 //
-// Per AAuth §12.2, scope is a property of the agent↔resource authorization
-// (POST /authorize → resource_token.scope → auth_token.scope). This map is
-// the single source of truth: the /.well-known/aauth-resource.json endpoint
-// exposes it, the UI hydrates its checkboxes from it, and /authorize rejects
-// any scope not listed here.
+// Resource scopes describe operations an agent can perform at this resource
+// (the playground, wearing its resource hat). Identity scopes (openid,
+// profile, email, ...) live on a different axis — those are requested at
+// bootstrap and arrive back as named claims on the auth_token, not on the
+// scope field. Only the values in this map are valid at /authorize.
 const SCOPE_DESCRIPTIONS: Record<string, string> = {
-  openid: 'Verify your identity',
-  profile: 'Access your profile information',
-  name: 'Access your full name',
-  email: 'Access your email address',
-  picture: 'Access your profile picture',
-  nickname: 'Access your nickname',
-  given_name: 'Access your given name',
-  family_name: 'Access your family name',
-  phone: 'Access your phone number',
-  ethereum: 'Access your linked Ethereum wallet',
-  discord: 'Access your linked Discord account',
-  twitter: 'Access your linked Twitter account',
-  github: 'Access your linked GitHub account',
-  gitlab: 'Access your linked GitLab account',
+  'playground.demo': 'Run the playground demo endpoint',
 }
 
 // ── Well-known endpoints ──
@@ -605,6 +592,68 @@ app.post('/authorize', async (c) => {
     ps_metadata_url: psMetadataUrl,
     resource_token: resourceToken,
     resource_token_decoded: rtPayload,
+  })
+})
+
+// ── Resource API: /api/demo ──
+//
+// The resource endpoint gated by `playground.demo`. An agent calls this with
+// an auth_token issued by the PS; we verify the token, check the scope, and
+// echo back a greeting using identity claims the PS placed on the token.
+// Keeps the demo honest — the user sees a scope go end-to-end and actually
+// gate something, rather than hanging unused in a consent screen.
+app.get('/api/demo', async (c) => {
+  const auth = c.req.header('Authorization') || ''
+  const m = auth.match(/^Bearer\s+(.+)$/)
+  if (!m) return c.json({ error: 'missing bearer auth_token' }, 401)
+  const token = m[1]
+
+  // Decode (unverified) to find iss → then fetch JWKS → verify.
+  let unverified: Record<string, unknown>
+  try {
+    unverified = decodeJWTPayload(token)
+  } catch {
+    return c.json({ error: 'malformed auth_token' }, 401)
+  }
+  const iss = unverified.iss as string | undefined
+  if (!iss) return c.json({ error: 'auth_token missing iss' }, 401)
+
+  let payload: Record<string, unknown>
+  try {
+    const metaRes = await fetch(`${iss}/.well-known/aauth-person.json`)
+    if (!metaRes.ok) return c.json({ error: `fetch PS metadata failed: ${metaRes.status}` }, 502)
+    const meta = (await metaRes.json()) as Record<string, unknown>
+    const jwksUri = meta.jwks_uri as string | undefined
+    if (!jwksUri) return c.json({ error: 'PS metadata missing jwks_uri' }, 502)
+    const jwksRes = await fetch(jwksUri)
+    if (!jwksRes.ok) return c.json({ error: `fetch PS JWKS failed: ${jwksRes.status}` }, 502)
+    const jwks = (await jwksRes.json()) as { keys: JsonWebKey[] }
+    const verified = await verifyJWT(token, jwks)
+    payload = verified.payload as Record<string, unknown>
+  } catch (err) {
+    return c.json({ error: `auth_token verification failed: ${(err as Error).message}` }, 401)
+  }
+
+  const origin = c.env.ORIGIN
+  if (payload.aud !== origin) return c.json({ error: 'auth_token aud mismatch' }, 401)
+  const now = Math.floor(Date.now() / 1000)
+  if (!payload.exp || (payload.exp as number) < now) return c.json({ error: 'auth_token expired' }, 401)
+
+  const scopeStr = typeof payload.scope === 'string' ? payload.scope : ''
+  const scopes = scopeStr.split(/\s+/).filter(Boolean)
+  if (!scopes.includes('playground.demo')) {
+    return c.json({ error: 'insufficient_scope', required: 'playground.demo', granted: scopes }, 403)
+  }
+
+  const name = (payload.name as string) || (payload.given_name as string) || 'friend'
+  return c.json({
+    hello: name,
+    granted_scopes: scopes,
+    identity_claims_present: {
+      name: typeof payload.name === 'string',
+      email: typeof payload.email === 'string',
+      picture: typeof payload.picture === 'string',
+    },
   })
 })
 

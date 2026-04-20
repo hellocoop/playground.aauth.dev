@@ -430,30 +430,60 @@ function enableAuthzSection() {
 }
 
 // ── Scope picker hydration ──
-// Renders from /.well-known/aauth-resource.json so the UI can't offer a
-// scope /authorize would later reject. openid is always shown as required.
-// Order is explicit (not alphabetical) — identity claims first, then
-// external-provider links grouped at the bottom. Anything the server
-// advertises that's not in this list falls back to alphabetical at the end.
-const SCOPE_DISPLAY_ORDER = [
-  'openid',
-  'profile',
-  'name',
-  'email',
-  'picture',
-  'nickname',
-  'given_name',
-  'family_name',
-  'phone',
-  'ethereum',
-  'discord',
-  'twitter',
-  'github',
-  'gitlab',
+//
+// Two separate scope pickers, corresponding to the two scope axes:
+//
+// Identity scopes — requested at bootstrap. Granted claims come back as
+// named fields on the auth_token (name, email, ...). List hardcoded here
+// for now since the wallet PS doesn't publish scope descriptions.
+// TODO: when PS publishes scopes_supported with descriptions, hydrate
+// from {ps_origin}/.well-known/aauth-person.json instead.
+//
+// Resource scopes — requested at /authorize. End up in auth_token.scope
+// and gate what the agent can do at this resource. Hydrated from this
+// resource's /.well-known/aauth-resource.json so the UI never offers
+// something the server would reject.
+
+const IDENTITY_SCOPES = [
+  { name: 'openid',      description: 'Verify your identity',            required: true },
+  { name: 'profile',     description: 'Access your profile information' },
+  { name: 'name',        description: 'Access your full name' },
+  { name: 'email',       description: 'Access your email address' },
+  { name: 'picture',     description: 'Access your profile picture' },
+  { name: 'nickname',    description: 'Access your nickname' },
+  { name: 'given_name',  description: 'Access your given name' },
+  { name: 'family_name', description: 'Access your family name' },
+  { name: 'phone',       description: 'Access your phone number' },
+  { name: 'ethereum',    description: 'Access your linked Ethereum wallet' },
+  { name: 'discord',     description: 'Access your linked Discord account' },
+  { name: 'twitter',     description: 'Access your linked Twitter account' },
+  { name: 'github',      description: 'Access your linked GitHub account' },
+  { name: 'gitlab',      description: 'Access your linked GitLab account' },
 ]
 
-async function hydrateScopesFromMetadata() {
-  const grid = document.getElementById('scope-grid')
+function renderScopeRow(scope, description, opts = {}) {
+  const attrs = [`value="${scope}"`]
+  if (opts.checked) attrs.push('checked')
+  if (opts.disabled) attrs.push('disabled')
+  const title = description ? ` title="${description.replace(/"/g, '&quot;')}"` : ''
+  const required = opts.required ? ' <span class="scope-required">*</span>' : ''
+  return `<label class="checkbox-label"${title}><input type="checkbox" ${attrs.join(' ')}> <span>${scope}${required}</span></label>`
+}
+
+function hydrateIdentityScopes() {
+  const grid = document.getElementById('identity-scope-grid')
+  if (!grid) return
+  grid.innerHTML = IDENTITY_SCOPES.map((s) =>
+    renderScopeRow(s.name, s.description, {
+      checked: !!s.required,
+      disabled: !!s.required,
+      required: !!s.required,
+    }),
+  ).join('')
+}
+
+async function hydrateResourceScopes() {
+  const grid = document.getElementById('resource-scope-grid')
   if (!grid) return
   let descriptions = {}
   try {
@@ -461,30 +491,12 @@ async function hydrateScopesFromMetadata() {
     const body = await res.json()
     descriptions = body?.scope_descriptions || {}
   } catch {
-    // Fall through with empty descriptions so at least openid renders.
+    // Fall through — resource-scope grid renders empty.
   }
-  const orderIndex = new Map(SCOPE_DISPLAY_ORDER.map((s, i) => [s, i]))
-  const ordered = Object.keys(descriptions)
-    .filter((s) => s !== 'openid')
-    .sort((a, b) => {
-      const ai = orderIndex.has(a) ? orderIndex.get(a) : Infinity
-      const bi = orderIndex.has(b) ? orderIndex.get(b) : Infinity
-      if (ai !== bi) return ai - bi
-      return a.localeCompare(b)
-    })
-  const row = (scope, opts = {}) => {
-    const attrs = [`value="${scope}"`]
-    if (opts.checked) attrs.push('checked')
-    if (opts.disabled) attrs.push('disabled')
-    const title = descriptions[scope] ? ` title="${descriptions[scope].replace(/"/g, '&quot;')}"` : ''
-    const required = opts.required ? ' <span class="scope-required">*</span>' : ''
-    return `<label class="checkbox-label"${title}><input type="checkbox" ${attrs.join(' ')}> <span>${scope}${required}</span></label>`
-  }
-  const html = [
-    row('openid', { checked: true, disabled: true, required: true }),
-    ...ordered.map((s) => row(s)),
-  ].join('')
-  grid.innerHTML = html
+  const scopes = Object.keys(descriptions).sort()
+  grid.innerHTML = scopes
+    .map((s) => renderScopeRow(s, descriptions[s]))
+    .join('')
 }
 
 // ── Settings persistence ──
@@ -523,14 +535,22 @@ function loadSettings() {
     updatePSCurrent()
   }
 
-  // Restore scope checkboxes (if persisted; otherwise leave HTML defaults).
-  // Scoped to #scope-grid so we don't collide with the per-hint enable
-  // checkboxes that also live inside #authz-section.
-  if (Array.isArray(saved.scopes)) {
-    const set = new Set(saved.scopes)
-    const boxes = document.querySelectorAll('#scope-grid input[type="checkbox"]')
+  // Restore identity scope checkboxes.
+  if (Array.isArray(saved.identity_scopes)) {
+    const set = new Set(saved.identity_scopes)
+    const boxes = document.querySelectorAll('#identity-scope-grid input[type="checkbox"]')
     for (const b of boxes) {
       if (b.disabled) continue // openid stays checked regardless
+      b.checked = set.has(b.value)
+    }
+  }
+
+  // Restore resource scope checkboxes.
+  if (Array.isArray(saved.resource_scopes)) {
+    const set = new Set(saved.resource_scopes)
+    const boxes = document.querySelectorAll('#resource-scope-grid input[type="checkbox"]')
+    for (const b of boxes) {
+      if (b.disabled) continue
       b.checked = set.has(b.value)
     }
   }
@@ -558,8 +578,11 @@ function saveSettings() {
   const psCustom = document.getElementById('ps-custom')?.value?.trim() || ''
   const ps = psRadio ? psRadio.value : DEFAULT_PS
 
-  const scopes = Array.from(
-    document.querySelectorAll('#scope-grid input[type="checkbox"]:checked')
+  const identity_scopes = Array.from(
+    document.querySelectorAll('#identity-scope-grid input[type="checkbox"]:checked')
+  ).map(b => b.value)
+  const resource_scopes = Array.from(
+    document.querySelectorAll('#resource-scope-grid input[type="checkbox"]:checked')
   ).map(b => b.value)
 
   const hints = {}
@@ -574,7 +597,8 @@ function saveSettings() {
   localStorage.setItem(SETTINGS_KEY, JSON.stringify({
     ps,
     ps_custom: psCustom,
-    scopes,
+    identity_scopes,
+    resource_scopes,
     hints,
     hints_enabled,
   }))
@@ -614,11 +638,13 @@ function wireSettingsAutosave() {
 
 // ── Initialization ──
 
-// Hydrate the scope picker from resource metadata BEFORE restoring saved
-// selections — loadSettings queries the checkboxes by value, so they have
-// to exist in the DOM first.
+// Hydrate both scope pickers BEFORE restoring saved selections —
+// loadSettings queries checkboxes by value, so they have to exist first.
+// Identity scopes are synchronous (hardcoded list); resource scopes are
+// async (from this resource's well-known metadata).
 ;(async () => {
-  await hydrateScopesFromMetadata()
+  hydrateIdentityScopes()
+  await hydrateResourceScopes()
   loadSettings()
   wireSettingsAutosave()
 })()

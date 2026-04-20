@@ -2966,8 +2966,12 @@ ${renderJSON(body)}`;
     </details>
   `;
   }
-  function getSelectedScopes() {
-    const checkboxes = document.querySelectorAll('#authz-section input[type="checkbox"]:checked');
+  function getSelectedIdentityScopes() {
+    const checkboxes = document.querySelectorAll('#identity-scope-grid input[type="checkbox"]:checked');
+    return Array.from(checkboxes).map((cb) => cb.value).join(" ");
+  }
+  function getSelectedResourceScopes() {
+    const checkboxes = document.querySelectorAll('#resource-scope-grid input[type="checkbox"]:checked');
     return Array.from(checkboxes).map((cb) => cb.value).join(" ");
   }
   function getHints() {
@@ -3301,6 +3305,7 @@ ${renderJSON(body)}`;
         "success",
         `<p>The PS returned an <code>auth_token</code> alongside the bootstrap_token in the pending response. Skipping the PS /token round trip.</p>` + formatAuthToken(ctx.authTokenFromPending) + anotherRequestButton()
       );
+      await callDemoResourceApi(ctx.authTokenFromPending);
     }
     return { result, authTokenFromPending: ctx.authTokenFromPending || null };
   }
@@ -3420,9 +3425,14 @@ ${renderJSON(body)}`;
       alert("Please choose or enter a Person Server URL");
       return;
     }
-    const scope = getSelectedScopes();
-    if (!scope) {
-      alert("Select at least one scope");
+    const identityScope = getSelectedIdentityScopes();
+    const resourceScope = getSelectedResourceScopes();
+    if (!identityScope) {
+      alert("Select at least one identity scope");
+      return;
+    }
+    if (!resourceScope) {
+      alert("Select at least one resource scope");
       return;
     }
     clearLog();
@@ -3442,14 +3452,14 @@ ${renderJSON(body)}`;
     if (!haveUsableBinding) {
       window.aauthBinding.clearBinding();
       localStorage.removeItem("aauth-agent-token");
-      const ok = await runBootstrap(psUrl, scope, hints);
+      const ok = await runBootstrap(psUrl, identityScope, hints);
       if (!ok) return;
       if (ok.authTokenFromPending) return;
     } else if (!agentTokenValid) {
       const refreshed = await runRefresh();
       if (!refreshed) return;
     }
-    await runAuthorizationAgainstPS(psUrl, scope, hints);
+    await runAuthorizationAgainstPS(psUrl, resourceScope, hints);
   }
   async function runAuthorizationAgainstPS(psUrl, scope, hints) {
     const keyPair = window.aauthEphemeral.get();
@@ -3552,6 +3562,7 @@ ${renderJSON(body)}`;
           "success",
           formatAuthToken(psBody.auth_token) + anotherRequestButton()
         );
+        await callDemoResourceApi(psBody.auth_token);
       } else if (psRes.status === 202) {
         const reqHeader = psRes.headers.get("aauth-requirement") || "";
         const fromHeader = parseInteractionHeader(reqHeader);
@@ -3699,7 +3710,7 @@ ${renderJSON(body)}`;
       authTokenFromPending: pending.auth_token
     });
     if (res && !res.authTokenFromPending) {
-      await runAuthorizationAgainstPS(saved.psUrl, getSelectedScopes() || "openid", {});
+      await runAuthorizationAgainstPS(saved.psUrl, getSelectedResourceScopes() || "playground.demo", {});
     }
     return true;
   }
@@ -3783,6 +3794,7 @@ ${renderJSON(body)}`;
             "success",
             (body.auth_token ? formatAuthToken(body.auth_token) : "") + anotherRequestButton()
           );
+          if (body.auth_token) await callDemoResourceApi(body.auth_token);
           return;
         }
         if (res.status === 403 || res.status === 408) {
@@ -3820,4 +3832,35 @@ ${renderJSON(body)}`;
     const section = document.getElementById("authz-section");
     if (section) section.scrollIntoView({ behavior: "smooth", block: "start" });
   });
+  async function callDemoResourceApi(authToken) {
+    const endpoint = `${window.location.origin}/api/demo`;
+    const reqStep = addLogStep(
+      `GET /api/demo`,
+      "pending",
+      `<p>Calling the resource's demo endpoint with the <code>auth_token</code> as a bearer credential. The endpoint verifies the token against the PS's JWKS and checks that <code>scope</code> covers <code>playground.demo</code>.</p>` + formatRequest("GET", endpoint, {
+        "Authorization": `Bearer ${authToken?.substring(0, 20)}...`
+      }, null)
+    );
+    try {
+      const res = await fetch(endpoint, {
+        method: "GET",
+        headers: { "Authorization": `Bearer ${authToken}` }
+      });
+      const body = await res.json().catch(() => null);
+      resolveStep(reqStep, res.ok ? "success" : "error", `GET /api/demo \u2192 ${res.status}`);
+      addLogStep(
+        res.ok ? "Demo API Called" : "Demo API Call Failed",
+        res.ok ? "success" : "error",
+        formatResponse(res.status, null, body)
+      );
+    } catch (err) {
+      resolveStep(reqStep, "error", "GET /api/demo (network error)");
+      addLogStep(
+        "Demo API Call Failed",
+        "error",
+        `<p style="color: var(--error)">${escapeHtml(err.message)}</p>`
+      );
+    }
+  }
+  window.aauthCallDemoResourceApi = callDemoResourceApi;
 })();

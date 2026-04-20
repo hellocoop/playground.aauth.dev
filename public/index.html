@@ -110,10 +110,20 @@
 
       <details class="section-group" open>
         <summary class="section-heading">
-          <span>Scopes</span>
+          <span>Identity scopes</span>
           <svg class="section-chevron" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5"/></svg>
         </summary>
-        <div class="scope-grid" id="scope-grid"></div>
+        <p class="scope-caption">Requested at bootstrap. Granted claims arrive as named fields on the <code>auth_token</code>.</p>
+        <div class="scope-grid" id="identity-scope-grid"></div>
+      </details>
+
+      <details class="section-group" open>
+        <summary class="section-heading">
+          <span>Resource scopes</span>
+          <svg class="section-chevron" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5"/></svg>
+        </summary>
+        <p class="scope-caption">Requested at <code>/authorize</code>. Gates what operations the agent can perform at this resource.</p>
+        <div class="scope-grid" id="resource-scope-grid"></div>
       </details>
 
       <details class="section-group">

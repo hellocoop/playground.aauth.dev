@@ -82,12 +82,13 @@ describe('GET /.well-known/aauth-resource.json', () => {
     const body = await res.json() as any
     expect(body.issuer).toBe('https://playground.test')
     expect(body.authorization_endpoint).toBe('https://playground.test/authorize')
+    // Resource scopes only — identity scopes belong to the PS and flow
+    // as claims on the auth_token, not as resource scope strings.
     expect(body.scope_descriptions).toMatchObject({
-      openid: expect.any(String),
-      profile: expect.any(String),
-      email: expect.any(String),
-      phone: expect.any(String),
+      'playground.demo': expect.any(String),
     })
+    expect(body.scope_descriptions.openid).toBeUndefined()
+    expect(body.scope_descriptions.profile).toBeUndefined()
   })
 })
 
@@ -268,7 +269,7 @@ describe('POST /authorize', () => {
     const res = await app.request('/authorize', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ps: 'https://ps.test', scope: 'openid' }),
+      body: JSON.stringify({ ps: 'https://ps.test', scope: 'playground.demo' }),
     }, env)
     expect(res.status).toBe(401)
     expect((await res.json() as any).error).toMatch(/signature verification failed/i)
@@ -280,7 +281,7 @@ describe('POST /authorize', () => {
     const res = await app.request('/authorize', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Signature-Key': 'sig=jwt;jwt="not.a.jwt"' },
-      body: JSON.stringify({ ps: 'https://ps.test', scope: 'openid' }),
+      body: JSON.stringify({ ps: 'https://ps.test', scope: 'playground.demo' }),
     }, env)
     expect(res.status).toBe(401)
   })
@@ -294,7 +295,7 @@ describe('POST /authorize', () => {
     // over the old JWT-only check.
     const attackerKp = await webcrypto.subtle.generateKey('Ed25519', true, ['sign', 'verify']) as CryptoKeyPair
     const attackerPriv = await webcrypto.subtle.exportKey('jwk', attackerKp.privateKey)
-    const body = JSON.stringify({ ps: 'https://ps.test', scope: 'openid' })
+    const body = JSON.stringify({ ps: 'https://ps.test', scope: 'playground.demo' })
     const headers = await signedHeaders(body, agentToken, attackerPriv)
     const res = await app.request('/authorize', { method: 'POST', headers, body }, env)
     expect(res.status).toBe(401)
@@ -305,7 +306,7 @@ describe('POST /authorize', () => {
     const app = await loadApp()
     const { env, kv } = await makeEnv()
     const { agentToken, privateJwk } = await mintAgentTokenWithKey(app, env, kv)
-    const body = JSON.stringify({ ps: 'http://ps.test', scope: 'openid' })
+    const body = JSON.stringify({ ps: 'http://ps.test', scope: 'playground.demo' })
     const headers = await signedHeaders(body, agentToken, privateJwk)
     const res = await app.request('/authorize', { method: 'POST', headers, body }, env)
     expect(res.status).toBe(400)
@@ -316,7 +317,7 @@ describe('POST /authorize', () => {
     const app = await loadApp()
     const { env, kv } = await makeEnv()
     const { agentToken, privateJwk } = await mintAgentTokenWithKey(app, env, kv)
-    const body = JSON.stringify({ ps: 'https://ps.test', scope: 'openid' })
+    const body = JSON.stringify({ ps: 'https://ps.test', scope: 'playground.demo' })
     const headers = await signedHeaders(body, agentToken, privateJwk)
     vi.stubGlobal('fetch', vi.fn(async () => new Response('nope', { status: 404 })))
     const res = await app.request('/authorize', { method: 'POST', headers, body }, env)
@@ -328,7 +329,7 @@ describe('POST /authorize', () => {
     const app = await loadApp()
     const { env, kv } = await makeEnv()
     const { agentToken, privateJwk } = await mintAgentTokenWithKey(app, env, kv)
-    const body = JSON.stringify({ ps: 'https://ps.test', scope: 'openid' })
+    const body = JSON.stringify({ ps: 'https://ps.test', scope: 'playground.demo' })
     const headers = await signedHeaders(body, agentToken, privateJwk)
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ issuer: 'https://ps.test' }), {
       status: 200,
@@ -358,7 +359,7 @@ describe('POST /authorize', () => {
       })
     }))
 
-    const body = JSON.stringify({ ps: 'https://ps.test', scope: 'openid profile' })
+    const body = JSON.stringify({ ps: 'https://ps.test', scope: 'playground.demo' })
     const headers = await signedHeaders(body, agentToken, privateJwk)
     const res = await app.request('/authorize', { method: 'POST', headers, body }, env)
 
@@ -372,7 +373,7 @@ describe('POST /authorize', () => {
     expect(payload.iss).toBe('https://playground.test')
     expect(payload.dwk).toBe('aauth-resource.json')
     expect(payload.aud).toBe('https://ps.test')
-    expect(payload.scope).toBe('openid profile')
+    expect(payload.scope).toBe('playground.demo')
     expect(payload.agent).toBe('aauth:playground@playground.test')
     expect(payload.agent_jkt).toBeDefined()
     expect(payload.exp as number).toBe((payload.iat as number) + 300)
@@ -388,34 +389,14 @@ describe('POST /authorize', () => {
     const app = await loadApp()
     const { env, kv } = await makeEnv()
     const { agentToken, privateJwk } = await mintAgentTokenWithKey(app, env, kv)
-    const body = JSON.stringify({ ps: 'https://ps.test', scope: 'openid notascope' })
+    const body = JSON.stringify({ ps: 'https://ps.test', scope: 'playground.demo openid' })
     const headers = await signedHeaders(body, agentToken, privateJwk)
     const res = await app.request('/authorize', { method: 'POST', headers, body }, env)
     expect(res.status).toBe(400)
     const resBody = await res.json() as any
     expect(resBody.error).toBe('invalid_scope')
-    expect(resBody.unknown).toEqual(['notascope'])
-  })
-
-  it('accepts multi-scope requests with all advertised values', async () => {
-    const app = await loadApp()
-    const { env, kv } = await makeEnv()
-    const { agentToken, privateJwk } = await mintAgentTokenWithKey(app, env, kv)
-    const psMetadata = {
-      issuer: 'https://ps.test',
-      token_endpoint: 'https://ps.test/token',
-      jwks_uri: 'https://ps.test/.well-known/jwks.json',
-    }
-    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(psMetadata), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
-    })))
-    const body = JSON.stringify({ ps: 'https://ps.test', scope: 'openid discord github' })
-    const headers = await signedHeaders(body, agentToken, privateJwk)
-    const res = await app.request('/authorize', { method: 'POST', headers, body }, env)
-    expect(res.status).toBe(200)
-    const payload = decodeJWTPayload(((await res.json()) as any).resource_token)
-    expect(payload.scope).toBe('openid discord github')
-    vi.unstubAllGlobals()
+    // Identity scopes are no longer valid at /authorize — they live on the
+    // bootstrap/identity axis and arrive as claims on the auth_token.
+    expect(resBody.unknown).toEqual(['openid'])
   })
 })

@@ -169,9 +169,14 @@ function formatAuthToken(token) {
 
 // ── Scope collection ──
 
-function getSelectedScopes() {
-  const checkboxes = document.querySelectorAll('#authz-section input[type="checkbox"]:checked')
-  return Array.from(checkboxes).map(cb => cb.value).join(' ')
+function getSelectedIdentityScopes() {
+  const checkboxes = document.querySelectorAll('#identity-scope-grid input[type="checkbox"]:checked')
+  return Array.from(checkboxes).map((cb) => cb.value).join(' ')
+}
+
+function getSelectedResourceScopes() {
+  const checkboxes = document.querySelectorAll('#resource-scope-grid input[type="checkbox"]:checked')
+  return Array.from(checkboxes).map((cb) => cb.value).join(' ')
 }
 
 function getHints() {
@@ -533,6 +538,7 @@ async function completeAgentServerBootstrap(bootstrapToken, publicJwk, keyPair, 
       formatAuthToken(ctx.authTokenFromPending) +
       anotherRequestButton()
     )
+    await callDemoResourceApi(ctx.authTokenFromPending)
   }
 
   return { result, authTokenFromPending: ctx.authTokenFromPending || null }
@@ -662,9 +668,14 @@ async function startAuthorization() {
     return
   }
 
-  const scope = getSelectedScopes()
-  if (!scope) {
-    alert('Select at least one scope')
+  const identityScope = getSelectedIdentityScopes()
+  const resourceScope = getSelectedResourceScopes()
+  if (!identityScope) {
+    alert('Select at least one identity scope')
+    return
+  }
+  if (!resourceScope) {
+    alert('Select at least one resource scope')
     return
   }
 
@@ -690,7 +701,7 @@ async function startAuthorization() {
     // Full bootstrap — also drops any stale binding/token.
     window.aauthBinding.clearBinding()
     localStorage.removeItem('aauth-agent-token')
-    const ok = await runBootstrap(psUrl, scope, hints)
+    const ok = await runBootstrap(psUrl, identityScope, hints)
     if (!ok) return
     // If bootstrap already produced an auth_token (PS bundled it into the
     // pending response), we're done — no need to hit PS /token, which
@@ -703,8 +714,9 @@ async function startAuthorization() {
   }
 
   // At this point agent_token is valid and current (either freshly minted
-  // or already valid). Now run the standard resource-token / PS /token flow.
-  await runAuthorizationAgainstPS(psUrl, scope, hints)
+  // or already valid). Resource scope goes to /authorize; identity scope
+  // was locked in at bootstrap and doesn't ride here.
+  await runAuthorizationAgainstPS(psUrl, resourceScope, hints)
 }
 
 async function runAuthorizationAgainstPS(psUrl, scope, hints) {
@@ -809,6 +821,7 @@ async function runAuthorizationAgainstPS(psUrl, scope, hints) {
         formatAuthToken(psBody.auth_token) +
         anotherRequestButton()
       )
+      await callDemoResourceApi(psBody.auth_token)
     } else if (psRes.status === 202) {
       // Interaction required. This can still happen on a scope upgrade.
       const reqHeader = psRes.headers.get('aauth-requirement') || ''
@@ -966,7 +979,7 @@ async function resumePendingInteraction() {
   if (res && !res.authTokenFromPending) {
     // User's current scope selection — they returned to this tab right after
     // PS consent, so the checkboxes reflect what they want for /authorize.
-    await runAuthorizationAgainstPS(saved.psUrl, getSelectedScopes() || 'openid', {})
+    await runAuthorizationAgainstPS(saved.psUrl, getSelectedResourceScopes() || 'playground.demo', {})
   }
   return true
 }
@@ -1058,6 +1071,7 @@ async function startAuthTokenPolling(pollUrl, baseUrl, interactionStep) {
         addLogStep('Authorization Granted', 'success',
           (body.auth_token ? formatAuthToken(body.auth_token) : '') +
           anotherRequestButton())
+        if (body.auth_token) await callDemoResourceApi(body.auth_token)
         return
       }
       if (res.status === 403 || res.status === 408) {
@@ -1100,3 +1114,38 @@ document.addEventListener('click', (e) => {
   const section = document.getElementById('authz-section')
   if (section) section.scrollIntoView({ behavior: 'smooth', block: 'start' })
 })
+
+// ── Close the loop: call the demo resource API with the minted auth_token ──
+//
+// Demonstrates that the playground.demo scope actually gates something. We
+// present the auth_token as a bearer token to the playground's own
+// /api/demo endpoint — the token is verified there against the PS's JWKS
+// and must carry `playground.demo` in scope.
+
+async function callDemoResourceApi(authToken) {
+  const endpoint = `${window.location.origin}/api/demo`
+  const reqStep = addLogStep(`GET /api/demo`, 'pending',
+    `<p>Calling the resource's demo endpoint with the <code>auth_token</code> as a bearer credential. The endpoint verifies the token against the PS's JWKS and checks that <code>scope</code> covers <code>playground.demo</code>.</p>` +
+    formatRequest('GET', endpoint, {
+      'Authorization': `Bearer ${authToken?.substring(0, 20)}...`,
+    }, null)
+  )
+  try {
+    const res = await fetch(endpoint, {
+      method: 'GET',
+      headers: { 'Authorization': `Bearer ${authToken}` },
+    })
+    const body = await res.json().catch(() => null)
+    resolveStep(reqStep, res.ok ? 'success' : 'error', `GET /api/demo \u2192 ${res.status}`)
+    addLogStep(
+      res.ok ? 'Demo API Called' : 'Demo API Call Failed',
+      res.ok ? 'success' : 'error',
+      formatResponse(res.status, null, body),
+    )
+  } catch (err) {
+    resolveStep(reqStep, 'error', 'GET /api/demo (network error)')
+    addLogStep('Demo API Call Failed', 'error',
+      `<p style="color: var(--error)">${escapeHtml(err.message)}</p>`)
+  }
+}
+window.aauthCallDemoResourceApi = callDemoResourceApi
