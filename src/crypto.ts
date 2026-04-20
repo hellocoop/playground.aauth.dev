@@ -93,6 +93,20 @@ export function decodeJWTHeader(jwt: string): Record<string, unknown> {
 // `kid` (falling back to first key if no kid), rejects non-EdDSA algs, and
 // checks the signature. Callers are responsible for payload claim checks
 // (iss/aud/exp/nbf/jti).
+// Maps JWT alg → WebCrypto import/verify parameters. Extend here for new
+// algorithms. Hellō's issuer JWKS uses RS256; our own JWKS uses EdDSA.
+const JWT_ALG_PARAMS: Record<string, { importAlgo: any; verifyAlgo: any }> = {
+  EdDSA: { importAlgo: { name: 'Ed25519' }, verifyAlgo: 'Ed25519' },
+  RS256: {
+    importAlgo: { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
+    verifyAlgo: 'RSASSA-PKCS1-v1_5',
+  },
+  ES256: {
+    importAlgo: { name: 'ECDSA', namedCurve: 'P-256' },
+    verifyAlgo: { name: 'ECDSA', hash: 'SHA-256' },
+  },
+}
+
 export async function verifyJWT(
   jwt: string,
   jwks: { keys: JsonWebKey[] }
@@ -102,7 +116,8 @@ export async function verifyJWT(
   const [headerB64, payloadB64, signatureB64] = parts
 
   const header = JSON.parse(new TextDecoder().decode(base64urlDecode(headerB64)))
-  if (header.alg !== 'EdDSA') {
+  const algParams = JWT_ALG_PARAMS[header.alg]
+  if (!algParams) {
     throw new Error(`unsupported alg: ${header.alg}`)
   }
 
@@ -120,12 +135,12 @@ export async function verifyJWT(
       const key = await crypto.subtle.importKey(
         'jwk',
         { ...jwk, key_ops: ['verify'] },
-        { name: 'Ed25519' },
+        algParams.importAlgo,
         false,
         ['verify']
       )
       const ok = await crypto.subtle.verify(
-        'Ed25519',
+        algParams.verifyAlgo,
         key,
         signature as unknown as ArrayBuffer,
         signingInput as unknown as ArrayBuffer

@@ -327,6 +327,12 @@ async function pollForBootstrapToken(absolutePollUrl, keyPair, publicJwk, intera
 }
 
 async function completeAgentServerBootstrap(bootstrapToken, publicJwk, keyPair) {
+  // Belt-and-suspenders: pollForBootstrapToken clears the pending-bootstrap
+  // key on success, but clear again here so any post-poll error path
+  // (e.g. agent-server /bootstrap/challenge rejecting the token) doesn't
+  // leave a stale pending entry that would be resumed on next reload.
+  clearPendingBootstrap()
+
   // POST /bootstrap/challenge. Server verifies bootstrap_token, returns
   // WebAuthn options + a transaction id tied to the already-validated claims.
   // Pass the generated three-word handle so the server can mint
@@ -808,8 +814,12 @@ async function resumePendingInteraction() {
   try { saved = JSON.parse(localStorage.getItem(PENDING_KEY) || 'null') } catch { saved = null }
   if (!saved?.pollUrl) return false
 
-  // Stale (>1h) → give up. The ephemeral key we were using was rotated out too.
-  if (Date.now() - (saved.startedAt || 0) > 3600 * 1000) {
+  // Stale (>10 min) → give up. PS pending sessions expire ~5–10 min; a
+  // pending older than that is almost always leftover from a prior tab
+  // that was closed or a flow that errored past the poll. Reviving it
+  // would re-consume an already-spent bootstrap_token and fail with
+  // jti-replay at the agent server.
+  if (Date.now() - (saved.startedAt || 0) > 10 * 60 * 1000) {
     clearPendingBootstrap()
     return false
   }

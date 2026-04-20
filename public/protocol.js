@@ -3124,6 +3124,7 @@ ${renderJSON(body)}`;
     });
   }
   async function completeAgentServerBootstrap(bootstrapToken, publicJwk, keyPair) {
+    clearPendingBootstrap();
     const agentLocal = localStorage.getItem("aauth-agent-name") || "";
     const challengeReqStep = addLogStep(
       "POST /bootstrap/challenge",
@@ -3596,7 +3597,7 @@ ${renderJSON(body)}`;
       saved = null;
     }
     if (!saved?.pollUrl) return false;
-    if (Date.now() - (saved.startedAt || 0) > 3600 * 1e3) {
+    if (Date.now() - (saved.startedAt || 0) > 10 * 60 * 1e3) {
       clearPendingBootstrap();
       return false;
     }
