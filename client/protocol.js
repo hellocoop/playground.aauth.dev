@@ -771,7 +771,12 @@ function renderInteraction(interaction, pollUrl) {
   }
 
   const callbackUrl = `${window.location.origin}/`
-  const fullUrl = `${interaction.url}?code=${encodeURIComponent(interaction.code)}&callback=${encodeURIComponent(callbackUrl)}`
+  // Same-device URL: include ?callback= so the PS redirects the user back
+  // here after consent. QR-code URL: omit it — the other device can't
+  // redirect back to this browser anyway, and a shorter URL makes a
+  // denser, more scannable code.
+  const sameDeviceUrl = `${interaction.url}?code=${encodeURIComponent(interaction.code)}&callback=${encodeURIComponent(callbackUrl)}`
+  const qrUrl = `${interaction.url}?code=${encodeURIComponent(interaction.code)}`
   const qrId = `qr-${Math.random().toString(36).slice(2, 9)}`
   const urlId = nextCopyId()
   const html = `
@@ -779,10 +784,10 @@ function renderInteraction(interaction, pollUrl) {
       <p>The Person Server requires user interaction.</p>
       <div class="interaction-code">${escapeHtml(interaction.code)}</div>
       <div class="interaction-actions">
-        <a class="interaction-link" href="${escapeHtml(fullUrl)}">Open Person Server</a>
+        <a class="interaction-link" href="${escapeHtml(sameDeviceUrl)}">Open Person Server</a>
         <div class="interaction-url-row">
-          <code class="interaction-url" id="${urlId}">${escapeHtml(fullUrl)}</code>
-          <button class="copy-btn" type="button" data-copy="${escapeHtml(fullUrl)}" aria-label="Copy"></button>
+          <code class="interaction-url" id="${urlId}">${escapeHtml(sameDeviceUrl)}</code>
+          <button class="copy-btn" type="button" data-copy="${escapeHtml(sameDeviceUrl)}" aria-label="Copy"></button>
         </div>
       </div>
       <div class="interaction-or"><span>OR</span></div>
@@ -799,7 +804,7 @@ function renderInteraction(interaction, pollUrl) {
     if (!qrContainer) return
     try {
       const qr = qrcode(0, 'M')
-      qr.addData(fullUrl)
+      qr.addData(qrUrl)
       qr.make()
       qrContainer.innerHTML = qr.createSvgTag({ scalable: true, margin: 0 })
     } catch (err) {
