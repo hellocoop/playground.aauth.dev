@@ -596,6 +596,7 @@ document.getElementById('reset-btn')?.addEventListener('click', async () => {
     'aauth-session-id',
     'aauth-has-passkey',
     'aauth-pending-bootstrap',
+    'aauth-pending-authorize',
     'aauth-pending-interaction',
   ]
   for (const k of keys) localStorage.removeItem(k)
@@ -616,7 +617,10 @@ document.getElementById('reset-btn')?.addEventListener('click', async () => {
     const kp = await loadKeyPair()
     if (kp) ephemeralKeyPair = kp
   }
-  // If the user is returning from a PS interaction (same-tab redirect
-  // back to '/'), resume polling where we left off.
+  // Resume whichever pending flow the user left mid-interaction when they
+  // redirected to the PS. Bootstrap takes precedence (can't authorize
+  // without an agent_token anyway). Both are no-ops if no pending state
+  // is saved or it's gone stale.
   window.resumePendingInteraction?.()
+  window.resumePendingAuthorize?.()
 })()

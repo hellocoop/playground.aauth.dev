@@ -3501,6 +3501,12 @@ ${renderJSON(body)}`;
           formatResponse(202, responseHeaders, psBody) + renderInteraction(interaction, pollUrl)
         );
         if (pollUrl) {
+          savePendingAuthorize({
+            pollUrl: new URL(pollUrl, tokenEndpoint).href,
+            tokenEndpoint,
+            psUrl,
+            scope
+          });
           startAuthTokenPolling(pollUrl, tokenEndpoint, interactionStep);
         }
       } else {
@@ -3628,6 +3634,48 @@ ${renderJSON(body)}`;
     return true;
   }
   window.resumePendingInteraction = resumePendingInteraction;
+  var PENDING_AUTHZ_KEY = "aauth-pending-authorize";
+  function savePendingAuthorize(state) {
+    try {
+      localStorage.setItem(PENDING_AUTHZ_KEY, JSON.stringify({ ...state, startedAt: Date.now() }));
+    } catch {
+    }
+  }
+  function clearPendingAuthorize() {
+    try {
+      localStorage.removeItem(PENDING_AUTHZ_KEY);
+    } catch {
+    }
+  }
+  async function resumePendingAuthorize() {
+    let saved;
+    try {
+      saved = JSON.parse(localStorage.getItem(PENDING_AUTHZ_KEY) || "null");
+    } catch {
+      saved = null;
+    }
+    if (!saved?.pollUrl) return false;
+    if (Date.now() - (saved.startedAt || 0) > 10 * 60 * 1e3) {
+      clearPendingAuthorize();
+      return false;
+    }
+    const keyPair = window.aauthEphemeral.get();
+    const agentToken = localStorage.getItem("aauth-agent-token");
+    if (!keyPair || !agentToken) {
+      clearPendingAuthorize();
+      return false;
+    }
+    showLog();
+    addLogSection("Authorization (resumed)");
+    const interactionStep = addLogStep(
+      "Resuming authorize interaction",
+      "pending",
+      `<div class="token-display">Polling ${escapeHtml(saved.pollUrl)}</div>`
+    );
+    startAuthTokenPolling(saved.pollUrl, saved.tokenEndpoint, interactionStep);
+    return true;
+  }
+  window.resumePendingAuthorize = resumePendingAuthorize;
   function startAuthTokenPolling(pollUrl, baseUrl, interactionStep) {
     const absolutePollUrl = new URL(pollUrl, baseUrl).href;
     const keyPair = window.aauthEphemeral.get();
@@ -3645,6 +3693,7 @@ ${renderJSON(body)}`;
         });
         if (res.status === 200) {
           clearInterval(intv);
+          clearPendingAuthorize();
           const body = await res.json();
           resolveStep(interactionStep, "success", "Interaction Completed");
           addLogStep(
@@ -3654,6 +3703,7 @@ ${renderJSON(body)}`;
           );
         } else if (res.status === 403 || res.status === 408) {
           clearInterval(intv);
+          clearPendingAuthorize();
           const body = await res.json().catch(() => null);
           const label = res.status === 403 ? "Interaction Denied" : "Interaction Timed Out";
           resolveStep(interactionStep, "error", label);

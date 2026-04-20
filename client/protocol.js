@@ -720,6 +720,16 @@ async function runAuthorizationAgainstPS(psUrl, scope, hints) {
         renderInteraction(interaction, pollUrl)
       )
       if (pollUrl) {
+        // Persist enough state to resume polling after the user returns
+        // from wallet.hello-beta.net via same-tab redirect. Without this,
+        // the return trip would drop the user at the Continue form with
+        // no indication the authorize poll is still alive at the PS.
+        savePendingAuthorize({
+          pollUrl: new URL(pollUrl, tokenEndpoint).href,
+          tokenEndpoint,
+          psUrl,
+          scope,
+        })
         startAuthTokenPolling(pollUrl, tokenEndpoint, interactionStep)
       }
     } else {
@@ -848,7 +858,51 @@ async function resumePendingInteraction() {
 }
 window.resumePendingInteraction = resumePendingInteraction
 
-// ── Auth-token polling (for scope-upgrade flows on PS /token) ──
+// ── Pending-authorize state (survives same-tab redirect to wallet) ──
+
+const PENDING_AUTHZ_KEY = 'aauth-pending-authorize'
+
+function savePendingAuthorize(state) {
+  try { localStorage.setItem(PENDING_AUTHZ_KEY, JSON.stringify({ ...state, startedAt: Date.now() })) } catch {}
+}
+
+function clearPendingAuthorize() {
+  try { localStorage.removeItem(PENDING_AUTHZ_KEY) } catch {}
+}
+
+// Called on page load: if we have a persisted pending-authorize, resume
+// polling the PS for auth_token. Mirrors resumePendingInteraction for
+// bootstrap. Mounted after app.js init so ephemeral key + agent token
+// are already restored.
+async function resumePendingAuthorize() {
+  let saved
+  try { saved = JSON.parse(localStorage.getItem(PENDING_AUTHZ_KEY) || 'null') } catch { saved = null }
+  if (!saved?.pollUrl) return false
+
+  // 10-min freshness window — same rationale as pending-bootstrap.
+  if (Date.now() - (saved.startedAt || 0) > 10 * 60 * 1000) {
+    clearPendingAuthorize()
+    return false
+  }
+
+  const keyPair = window.aauthEphemeral.get()
+  const agentToken = localStorage.getItem('aauth-agent-token')
+  if (!keyPair || !agentToken) {
+    clearPendingAuthorize()
+    return false
+  }
+
+  showLog()
+  addLogSection('Authorization (resumed)')
+  const interactionStep = addLogStep('Resuming authorize interaction', 'pending',
+    `<div class="token-display">Polling ${escapeHtml(saved.pollUrl)}</div>`
+  )
+  startAuthTokenPolling(saved.pollUrl, saved.tokenEndpoint, interactionStep)
+  return true
+}
+window.resumePendingAuthorize = resumePendingAuthorize
+
+// ── Auth-token polling (for PS /token interaction flow) ──
 
 function startAuthTokenPolling(pollUrl, baseUrl, interactionStep) {
   const absolutePollUrl = new URL(pollUrl, baseUrl).href
@@ -867,6 +921,7 @@ function startAuthTokenPolling(pollUrl, baseUrl, interactionStep) {
       })
       if (res.status === 200) {
         clearInterval(intv)
+        clearPendingAuthorize()
         const body = await res.json()
         resolveStep(interactionStep, 'success', 'Interaction Completed')
         addLogStep('Authorization Granted', 'success',
@@ -875,6 +930,7 @@ function startAuthTokenPolling(pollUrl, baseUrl, interactionStep) {
           anotherRequestButton())
       } else if (res.status === 403 || res.status === 408) {
         clearInterval(intv)
+        clearPendingAuthorize()
         const body = await res.json().catch(() => null)
         const label = res.status === 403 ? 'Interaction Denied' : 'Interaction Timed Out'
         resolveStep(interactionStep, 'error', label)
