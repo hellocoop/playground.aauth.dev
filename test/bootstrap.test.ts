@@ -59,7 +59,6 @@ async function mintBootstrapToken(opts: {
   ephemeralJwk: JsonWebKey
   exp?: number
   iat?: number
-  scope?: string
   jti?: string
 }): Promise<{
   token: string
@@ -85,7 +84,6 @@ async function mintBootstrapToken(opts: {
     aud: opts.aud,
     sub: opts.sub,
     cnf: { jwk: cnfJwk },
-    scope: opts.scope ?? 'openid profile',
     jti: opts.jti ?? `jti-${Math.random().toString(36).slice(2)}`,
     iat: opts.iat ?? now,
     exp: opts.exp ?? now + 300,

@@ -226,16 +226,14 @@ function getHints() {
 // ── Bootstrap ceremony ──
 //
 // (PS /bootstrap → interaction → bootstrap_token → agent-server
-// /bootstrap/challenge → WebAuthn → /bootstrap/verify → agent_token +
-// resource_token). Runs once per (PS, user) pair; the resulting binding_key
-// is stored in localStorage so /refresh can reuse the same credentials.
-
-// Bootstrap carries BOTH axes the user is consenting to:
-// - `scope` (identity) — what user claims the PS should release.
-// - `resourceScope` + `resourceUrl` — operations at this resource the
-//    agent will perform. Surfacing both at bootstrap gives the user a
-//    single combined consent screen.
-async function runBootstrap(psUrl, scope, resourceScope, resourceUrl, hints) {
+// /bootstrap/challenge → WebAuthn → /bootstrap/verify → agent_token).
+// Runs once per (PS, user) pair; the resulting binding_key is stored
+// in localStorage so /refresh can reuse the same credentials.
+//
+// Bootstrap carries no scope. The ceremony establishes only the
+// user↔agent-server binding; scopes and claim release happen later
+// through the /authorize + PS /token flow.
+async function runBootstrap(psUrl, hints) {
   const agentServerOrigin = window.location.origin
 
   addLogSection('Bootstrap')
@@ -277,9 +275,6 @@ async function runBootstrap(psUrl, scope, resourceScope, resourceUrl, hints) {
   // key to bind into the resulting bootstrap_token.cnf.
   const psBootstrapBody = {
     agent_server: agentServerOrigin,
-    scope,
-    resource_scope: resourceScope || undefined,
-    resource_url: resourceUrl || undefined,
     ...hints,
   }
   const psBootReqStep = addLogStep(`POST ${new URL(bootstrapEndpoint).pathname}`, 'pending',
@@ -343,7 +338,7 @@ async function runBootstrap(psUrl, scope, resourceScope, resourceUrl, hints) {
   })
 
   const pending = await pollForBootstrapToken(absolutePollUrl, keyPair, publicJwk, interactionStep)
-  trace('pollForBootstrapToken returned', pending ? { hasToken: !!pending.bootstrap_token, hasAuth: !!pending.auth_token } : null)
+  trace('pollForBootstrapToken returned', pending ? { hasToken: !!pending.bootstrap_token } : null)
   if (!pending) return false
 
   addLogStep('Bootstrap Token Received', 'success',
@@ -351,10 +346,7 @@ async function runBootstrap(psUrl, scope, resourceScope, resourceUrl, hints) {
   )
 
   // Step 4: exchange with our own agent server /bootstrap/challenge.
-  return await completeAgentServerBootstrap(pending.bootstrap_token, publicJwk, keyPair, {
-    psUrl,
-    authTokenFromPending: pending.auth_token,
-  })
+  return await completeAgentServerBootstrap(pending.bootstrap_token, publicJwk, keyPair, { psUrl })
 }
 
 // Poll the PS pending URL for the bootstrap_token. Polls are signed with
@@ -403,10 +395,10 @@ async function pollForBootstrapToken(absolutePollUrl, keyPair, publicJwk, intera
         trace('poll token extracted, length', token.length)
         resolveStep(pollStep, 'success', `GET ${pollPath} \u2192 200`)
         resolveStep(interactionStep, 'success', 'User Consent Completed')
-        // Return the full body so callers can pick up auth_token if the PS
-        // bundles one — that lets us skip the /authorize + PS /token round
-        // trip since user consent was already established during bootstrap.
-        return { bootstrap_token: token, auth_token: body?.auth_token, raw: body }
+        // Bootstrap carries no scope, so the PS cannot bundle an auth_token
+        // here — only a bootstrap_token. scope/claims are negotiated later
+        // at /authorize + PS /token.
+        return { bootstrap_token: token, raw: body }
       }
       if (res.status === 403) {
         clearPendingBootstrap()
@@ -578,25 +570,8 @@ async function completeAgentServerBootstrap(bootstrapToken, publicJwk, keyPair, 
   addLogStep('Agent Token Minted', 'success',
     formatToken('Agent Token (aa-agent+jwt)', result.agent_token, decodeJWTPayloadBrowser(result.agent_token))
   )
-  addLogStep('Resource Token Minted', 'success',
-    formatToken('Resource Token (aa-resource+jwt)', result.resource_token, result.resource_token_decoded)
-  )
 
-  // If the PS bundled an auth_token in the bootstrap pending response, the
-  // user's consent is already recorded at the PS and we can skip the
-  // PS /token round-trip (which would otherwise re-prompt for interaction).
-  // Display it immediately and mark the flow complete.
-  if (ctx.authTokenFromPending) {
-    addLogSection('Authorization')
-    addLogStep('Authorization Granted (from bootstrap)', 'success',
-      `<p>The PS returned an <code>auth_token</code> alongside the bootstrap_token in the pending response. Skipping the PS /token round trip.</p>` +
-      formatAuthToken(ctx.authTokenFromPending) +
-      anotherRequestButton()
-    )
-    // await callDemoResourceApi(ctx.authTokenFromPending)
-  }
-
-  return { result, authTokenFromPending: ctx.authTokenFromPending || null }
+  return { result }
 }
 
 // Mirror of server-side deriveBindingKey: sha-256(ps_url + "|" + user_sub).
@@ -753,28 +728,21 @@ async function runRefresh() {
   return result
 }
 
-// ── Main flow: Continue button ──
+// ── Main flows: Bootstrap button + Continue button ──
 //
-// Decides what to do based on current state:
-//   no binding                         → full bootstrap
-//   binding + valid agent_token        → /authorize with selected scope
-//   binding + expired/missing token    → /refresh then /authorize
+// Two independent entry points, mutually exclusive in the UI:
+//
+//   startBootstrap — pre-bootstrap. Establishes the (PS, user) binding
+//                    and mints an agent_token. No scope, no /authorize.
+//
+//   startAuthorize — post-bootstrap. Uses the existing binding; refreshes
+//                    agent_token if expired, then runs /authorize → PS
+//                    /token → API call. Repeatable with different scopes.
 
-async function startAuthorization() {
+async function startBootstrap() {
   const psUrl = (window.getCurrentPS?.() || '').trim()
   if (!psUrl) {
     alert('Please choose or enter a Person Server URL')
-    return
-  }
-
-  const identityScope = getSelectedIdentityScopes()
-  const resourceScope = getSelectedResourceScopes()
-  if (!identityScope) {
-    alert('Select at least one identity scope')
-    return
-  }
-  if (!resourceScope) {
-    alert('Select at least one resource scope')
     return
   }
 
@@ -782,10 +750,35 @@ async function startAuthorization() {
   showLog()
 
   const hints = getHints()
-  const { bindingKey, bindingPs } = window.aauthBinding.get()
 
-  // If the user switched PS, the existing binding doesn't apply → full bootstrap.
-  const haveUsableBinding = bindingKey && bindingPs === psUrl
+  // Fresh bootstrap — drop any stale binding/token before starting.
+  window.aauthBinding.clearBinding()
+  localStorage.removeItem('aauth-agent-token')
+
+  await runBootstrap(psUrl, hints)
+}
+
+async function startAuthorize() {
+  const { bindingKey, bindingPs } = window.aauthBinding.get()
+  if (!bindingKey || !bindingPs) {
+    alert('No agent binding found. Bootstrap first.')
+    return
+  }
+
+  // The combined identity + resource scope string sent at /authorize.
+  // Resource scopes are validated server-side against SCOPE_DESCRIPTIONS;
+  // identity scopes pass through resource_token → PS /token and are
+  // applied as claim-release rules by the PS.
+  const combined = getCombinedScope()
+  if (!combined) {
+    alert('Select at least one scope')
+    return
+  }
+
+  clearLog()
+  showLog()
+
+  const hints = getHints()
 
   let agentTokenValid = false
   const savedAgentToken = localStorage.getItem('aauth-agent-token')
@@ -796,26 +789,21 @@ async function startAuthorization() {
     } catch { /* invalid token */ }
   }
 
-  if (!haveUsableBinding) {
-    // Full bootstrap — also drops any stale binding/token.
-    window.aauthBinding.clearBinding()
-    localStorage.removeItem('aauth-agent-token')
-    const ok = await runBootstrap(psUrl, identityScope, resourceScope, window.location.origin, hints)
-    if (!ok) return
-    // If bootstrap already produced an auth_token (PS bundled it into the
-    // pending response), we're done — no need to hit PS /token, which
-    // would re-prompt for interaction on top of the consent we just gave.
-    if (ok.authTokenFromPending) return
-    // Otherwise fall through and fetch auth_token via PS /token.
-  } else if (!agentTokenValid) {
+  if (!agentTokenValid) {
     const refreshed = await runRefresh()
     if (!refreshed) return
   }
 
-  // At this point agent_token is valid and current (either freshly minted
-  // or already valid). Resource scope goes to /authorize; identity scope
-  // was locked in at bootstrap and doesn't ride here.
-  await runAuthorizationAgainstPS(psUrl, resourceScope, hints)
+  await runAuthorizationAgainstPS(bindingPs, combined, hints)
+}
+
+// Identity + resource scopes concatenated into one space-delimited string.
+// No identity vs. resource distinction at the wire.
+function getCombinedScope() {
+  const identity = (getSelectedIdentityScopes() || '').split(/\s+/).filter(Boolean)
+  const resource = (getSelectedResourceScopes() || '').split(/\s+/).filter(Boolean)
+  const all = Array.from(new Set([...identity, ...resource]))
+  return all.join(' ')
 }
 
 async function runAuthorizationAgainstPS(psUrl, scope, hints) {
@@ -1080,15 +1068,10 @@ async function resumePendingInteraction() {
   addLogStep('Bootstrap Token Received', 'success',
     formatToken('Bootstrap Token (aa-bootstrap+jwt)', pending.bootstrap_token, decodeJWTPayloadBrowser(pending.bootstrap_token))
   )
-  const res = await completeAgentServerBootstrap(pending.bootstrap_token, publicJwk, kp, {
-    psUrl: saved.psUrl,
-    authTokenFromPending: pending.auth_token,
-  })
-  if (res && !res.authTokenFromPending) {
-    // User's current scope selection — they returned to this tab right after
-    // PS consent, so the checkboxes reflect what they want for /authorize.
-    await runAuthorizationAgainstPS(saved.psUrl, getSelectedResourceScopes() || 'playground.demo', {})
-  }
+  await completeAgentServerBootstrap(pending.bootstrap_token, publicJwk, kp, { psUrl: saved.psUrl })
+  // Bootstrap is a standalone flow now; don't auto-chain into /authorize.
+  // The user clicks Continue when they're ready to authorize with their
+  // chosen scopes.
   return true
 }
 window.resumePendingInteraction = resumePendingInteraction
@@ -1231,9 +1214,10 @@ function decodeJWTPayloadBrowser(jwt) {
   }
 }
 
-// ── Wire up Continue button ──
+// ── Wire up Bootstrap + Continue buttons ──
 
-document.getElementById('authz-btn').addEventListener('click', startAuthorization)
+document.getElementById('bootstrap-btn')?.addEventListener('click', startBootstrap)
+document.getElementById('authz-btn').addEventListener('click', startAuthorize)
 
 document.addEventListener('click', (e) => {
   const btn = e.target.closest('.js-scroll-authz')

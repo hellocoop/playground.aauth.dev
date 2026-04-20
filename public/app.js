@@ -303,18 +303,21 @@ window.aauthWebAuthn = {
 
 // ── UI updates ──
 
+// Post-bootstrap state: hide the Bootstrap section, show Agent Identity
+// (with agent info + tokens) and the Authorization Request section.
 function setAuthenticated(label) {
-  document.getElementById('auth-form').classList.add('hidden')
-  document.getElementById('auth-info').classList.remove('hidden')
+  document.getElementById('bootstrap-section')?.classList.add('hidden')
+  document.getElementById('auth-section')?.classList.remove('hidden')
+  document.getElementById('authz-section')?.classList.remove('hidden')
   document.getElementById('auth-user').textContent = label
-  document.getElementById('token-section').classList.remove('hidden')
 }
 
+// Pre-bootstrap state: show only the Bootstrap section; hide Agent Identity
+// and Authorization Request.
 function setUnauthenticated() {
-  document.getElementById('auth-form').classList.remove('hidden')
-  document.getElementById('auth-info').classList.add('hidden')
-  document.getElementById('token-section').classList.add('hidden')
-  // Authz section stays enabled — Continue triggers bootstrap.
+  document.getElementById('bootstrap-section')?.classList.remove('hidden')
+  document.getElementById('auth-section')?.classList.add('hidden')
+  document.getElementById('authz-section')?.classList.add('hidden')
 }
 
 function displayAgentToken(data) {
@@ -394,7 +397,6 @@ async function restoreAgentTokenAndKey() {
   agentToken = savedToken
   ephemeralKeyPair = keyPair
   displayAgentToken({ agent_token: savedToken, agent_id: payload.sub })
-  enableAuthzSection()
   return true
 }
 
@@ -402,7 +404,6 @@ async function restoreAgentTokenAndKey() {
 function applyBootstrapResult(result) {
   saveAgentToken(result.agent_token)
   displayAgentToken({ agent_token: result.agent_token, agent_id: result.agent_id })
-  enableAuthzSection()
   setAuthenticated(result.agent_id)
 }
 window.aauthApplyBootstrapResult = applyBootstrapResult
@@ -444,14 +445,6 @@ window.aauthEphemeral = {
   discardStaged: () => { stagedKeyPair = null },
   get: () => ephemeralKeyPair,
   getPublicJwk: async () => ephemeralKeyPair ? crypto.subtle.exportKey('jwk', ephemeralKeyPair.publicKey) : null,
-}
-
-function enableAuthzSection() {
-  const section = document.getElementById('authz-section')
-  if (section) {
-    section.style.opacity = '1'
-    section.style.pointerEvents = 'auto'
-  }
 }
 
 // ── Scope picker hydration ──
@@ -652,11 +645,15 @@ function updatePSCurrent() {
 }
 
 function wireSettingsAutosave() {
-  const authz = document.getElementById('authz-section')
-  if (!authz) return
-  // Any input/change inside the authz section saves and refreshes the summary.
-  authz.addEventListener('change', () => { saveSettings(); updatePSCurrent() })
-  authz.addEventListener('input', () => { saveSettings(); updatePSCurrent() })
+  // PS picker + hints live in the Bootstrap section; scope grids live in
+  // the Authorization section. Watch both for any user edit.
+  const roots = ['bootstrap-section', 'authz-section']
+    .map((id) => document.getElementById(id))
+    .filter(Boolean)
+  for (const root of roots) {
+    root.addEventListener('change', () => { saveSettings(); updatePSCurrent() })
+    root.addEventListener('input', () => { saveSettings(); updatePSCurrent() })
+  }
   // Typing in the custom URL field implicitly selects the custom radio.
   const customInput = document.getElementById('ps-custom')
   const customRadio = document.getElementById('ps-custom-radio')
@@ -712,9 +709,6 @@ document.addEventListener('click', (e) => {
   })
 })
 
-// The authz section is always enabled now — Continue kicks off the
-// bootstrap ceremony if no agent_token has been minted yet.
-enableAuthzSection()
 
 // Reset button — clears all playground state (settings, binding, agent
 // token, ephemeral key, session, agent-name) and reloads. Matches the
@@ -766,6 +760,10 @@ document.getElementById('reset-btn')?.addEventListener('click', async () => {
   if (restored) {
     const payload = decodeJWTPayload(agentToken)
     setAuthenticated(payload.sub)
+  } else if (bindingKey) {
+    // Binding exists but agent_token expired/missing. We're still bootstrapped;
+    // Continue will refresh. Show the post-bootstrap UI.
+    setAuthenticated(bindingSub || bindingPs || 'agent')
   } else if (localStorage.getItem('aauth-pending-bootstrap')) {
     // First-bootstrap resume case: no agent_token exists yet, but the
     // ephemeral key was saved to IndexedDB before the PS redirect. Load

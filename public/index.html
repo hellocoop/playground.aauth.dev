@@ -45,16 +45,71 @@
   </header>
   <main class="container">
 
-  <div class="section">
+  <div class="section" id="bootstrap-section">
+    <fieldset class="section-box">
+      <legend>Bootstrap Agent</legend>
+      <p style="color: var(--muted); font-size: 0.9rem;">Bootstrap establishes the binding between you and this agent server. No scopes are requested here; choose scopes at authorization.</p>
+
+      <details id="ps-details-bootstrap" class="section-group" open>
+        <summary class="section-heading">
+          <span>Person Server</span>
+          <svg class="section-chevron" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5"/></svg>
+          <span class="ps-current mono hidden" id="ps-current"></span>
+        </summary>
+        <ul class="server-list" id="ps-list">
+          <li>
+            <label class="radio-label"><input type="radio" name="ps" value="https://person.hello.coop"> <span>https://person.hello.coop</span></label>
+            <button class="copy-btn" type="button" data-copy="https://person.hello.coop" aria-label="Copy"></button>
+          </li>
+          <li class="custom-row">
+            <label class="radio-label"><input type="radio" name="ps" value="custom" id="ps-custom-radio"></label>
+            <input type="url" id="ps-custom" placeholder="https://ps.example" autocomplete="off">
+          </li>
+        </ul>
+      </details>
+
+      <details class="section-group">
+        <summary class="section-heading">
+          <span>Hints</span>
+          <svg class="section-chevron" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5"/></svg>
+        </summary>
+        <div class="hints-grid">
+          <label class="hint-row">
+            <input type="checkbox" class="hint-enable" data-hint-for="login-hint">
+            <span class="hint-name">login_hint</span>
+            <input type="text" id="login-hint" placeholder="user@example.com">
+          </label>
+          <label class="hint-row">
+            <input type="checkbox" class="hint-enable" data-hint-for="domain-hint">
+            <span class="hint-name">domain_hint</span>
+            <input type="text" id="domain-hint" placeholder="example.com">
+          </label>
+          <label class="hint-row">
+            <input type="checkbox" class="hint-enable" data-hint-for="provider-hint">
+            <span class="hint-name">provider_hint</span>
+            <input type="text" id="provider-hint" placeholder="github">
+          </label>
+          <label class="hint-row">
+            <input type="checkbox" class="hint-enable" data-hint-for="tenant">
+            <span class="hint-name">tenant</span>
+            <input type="text" id="tenant" placeholder="ten_xxx_xxx">
+          </label>
+        </div>
+      </details>
+
+      <div class="authz-actions">
+        <button id="bootstrap-btn" type="button">Bootstrap agent</button>
+      </div>
+    </fieldset>
+  </div>
+
+  <div class="section hidden" id="auth-section">
     <fieldset class="section-box" id="auth-card" data-test="auth-card">
       <legend>Agent Identity</legend>
-      <div id="auth-form">
-        <p style="color: var(--muted); font-size: 0.85rem;">Agent identity is established when bootstrap completes.<br/>Choose a Person Server below and click Continue to begin.</p>
-      </div>
-      <div id="auth-info" class="hidden">
+      <div id="auth-info">
         <p><span class="step-status step-status-success">&#x2713;</span> Bound as <strong id="auth-user"></strong></p>
       </div>
-      <div id="token-section" class="hidden">
+      <div id="token-section">
         <div id="agent-id-row" style="margin-top: 0.75rem;">
           <label>Agent Token</label>
           <div class="readonly-field">
@@ -86,27 +141,9 @@
     </fieldset>
   </div>
 
-  <div class="section" id="authz-section" style="opacity: 0.4; pointer-events: none;">
+  <div class="section hidden" id="authz-section">
     <fieldset class="section-box">
       <legend>Authorization Request</legend>
-
-      <details id="ps-details" class="section-group" open>
-        <summary class="section-heading">
-          <span>Person Server</span>
-          <svg class="section-chevron" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5"/></svg>
-          <span class="ps-current mono hidden" id="ps-current"></span>
-        </summary>
-        <ul class="server-list" id="ps-list">
-          <li>
-            <label class="radio-label"><input type="radio" name="ps" value="https://person.hello.coop"> <span>https://person.hello.coop</span></label>
-            <button class="copy-btn" type="button" data-copy="https://person.hello.coop" aria-label="Copy"></button>
-          </li>
-          <li class="custom-row">
-            <label class="radio-label"><input type="radio" name="ps" value="custom" id="ps-custom-radio"></label>
-            <input type="url" id="ps-custom" placeholder="https://ps.example" autocomplete="off">
-          </li>
-        </ul>
-      </details>
 
       <details class="section-group" open>
         <summary class="section-heading">
@@ -122,35 +159,6 @@
           <svg class="section-chevron" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5"/></svg>
         </summary>
         <div class="scope-grid" id="resource-scope-grid"></div>
-      </details>
-
-      <details class="section-group">
-        <summary class="section-heading">
-          <span>Hints</span>
-          <svg class="section-chevron" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5"/></svg>
-        </summary>
-        <div class="hints-grid">
-          <label class="hint-row">
-            <input type="checkbox" class="hint-enable" data-hint-for="login-hint">
-            <span class="hint-name">login_hint</span>
-            <input type="text" id="login-hint" placeholder="user@example.com">
-          </label>
-          <label class="hint-row">
-            <input type="checkbox" class="hint-enable" data-hint-for="domain-hint">
-            <span class="hint-name">domain_hint</span>
-            <input type="text" id="domain-hint" placeholder="example.com">
-          </label>
-          <label class="hint-row">
-            <input type="checkbox" class="hint-enable" data-hint-for="provider-hint">
-            <span class="hint-name">provider_hint</span>
-            <input type="text" id="provider-hint" placeholder="github">
-          </label>
-          <label class="hint-row">
-            <input type="checkbox" class="hint-enable" data-hint-for="tenant">
-            <span class="hint-name">tenant</span>
-            <input type="text" id="tenant" placeholder="ten_xxx_xxx">
-          </label>
-        </div>
       </details>
 
       <div class="authz-actions">

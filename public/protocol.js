@@ -3005,7 +3005,7 @@ ${renderJSON(body)}`;
     }
     return hints;
   }
-  async function runBootstrap(psUrl, scope, resourceScope, resourceUrl, hints) {
+  async function runBootstrap(psUrl, hints) {
     const agentServerOrigin = window.location.origin;
     addLogSection("Bootstrap");
     const { keyPair, publicJwk } = await window.aauthEphemeral.rotate();
@@ -3043,9 +3043,6 @@ ${renderJSON(body)}`;
     const bootstrapEndpoint = psMetadata.bootstrap_endpoint || `${psUrl.replace(/\/$/, "")}/bootstrap`;
     const psBootstrapBody = {
       agent_server: agentServerOrigin,
-      scope,
-      resource_scope: resourceScope || void 0,
-      resource_url: resourceUrl || void 0,
       ...hints
     };
     const psBootReqStep = addLogStep(
@@ -3117,17 +3114,14 @@ ${renderJSON(body)}`;
       psUrl
     });
     const pending = await pollForBootstrapToken(absolutePollUrl, keyPair, publicJwk, interactionStep);
-    trace("pollForBootstrapToken returned", pending ? { hasToken: !!pending.bootstrap_token, hasAuth: !!pending.auth_token } : null);
+    trace("pollForBootstrapToken returned", pending ? { hasToken: !!pending.bootstrap_token } : null);
     if (!pending) return false;
     addLogStep(
       "Bootstrap Token Received",
       "success",
       formatToken("Bootstrap Token (aa-bootstrap+jwt)", pending.bootstrap_token, decodeJWTPayloadBrowser(pending.bootstrap_token))
     );
-    return await completeAgentServerBootstrap(pending.bootstrap_token, publicJwk, keyPair, {
-      psUrl,
-      authTokenFromPending: pending.auth_token
-    });
+    return await completeAgentServerBootstrap(pending.bootstrap_token, publicJwk, keyPair, { psUrl });
   }
   async function pollForBootstrapToken(absolutePollUrl, keyPair, publicJwk, interactionStep) {
     const pollPath = new URL(absolutePollUrl).pathname;
@@ -3166,7 +3160,7 @@ ${renderJSON(body)}`;
           trace("poll token extracted, length", token.length);
           resolveStep(pollStep, "success", `GET ${pollPath} \u2192 200`);
           resolveStep(interactionStep, "success", "User Consent Completed");
-          return { bootstrap_token: token, auth_token: body?.auth_token, raw: body };
+          return { bootstrap_token: token, raw: body };
         }
         if (res.status === 403) {
           clearPendingBootstrap();
@@ -3335,20 +3329,7 @@ ${renderJSON(body)}`;
       "success",
       formatToken("Agent Token (aa-agent+jwt)", result.agent_token, decodeJWTPayloadBrowser(result.agent_token))
     );
-    addLogStep(
-      "Resource Token Minted",
-      "success",
-      formatToken("Resource Token (aa-resource+jwt)", result.resource_token, result.resource_token_decoded)
-    );
-    if (ctx.authTokenFromPending) {
-      addLogSection("Authorization");
-      addLogStep(
-        "Authorization Granted (from bootstrap)",
-        "success",
-        `<p>The PS returned an <code>auth_token</code> alongside the bootstrap_token in the pending response. Skipping the PS /token round trip.</p>` + formatAuthToken(ctx.authTokenFromPending) + anotherRequestButton()
-      );
-    }
-    return { result, authTokenFromPending: ctx.authTokenFromPending || null };
+    return { result };
   }
   async function deriveBindingKeyBrowser(psUrl, userSub) {
     const data = new TextEncoder().encode(`${psUrl}|${userSub}`);
@@ -3496,27 +3477,33 @@ ${renderJSON(body)}`;
     );
     return result;
   }
-  async function startAuthorization() {
+  async function startBootstrap() {
     const psUrl = (window.getCurrentPS?.() || "").trim();
     if (!psUrl) {
       alert("Please choose or enter a Person Server URL");
       return;
     }
-    const identityScope = getSelectedIdentityScopes();
-    const resourceScope = getSelectedResourceScopes();
-    if (!identityScope) {
-      alert("Select at least one identity scope");
+    clearLog();
+    showLog();
+    const hints = getHints();
+    window.aauthBinding.clearBinding();
+    localStorage.removeItem("aauth-agent-token");
+    await runBootstrap(psUrl, hints);
+  }
+  async function startAuthorize() {
+    const { bindingKey, bindingPs } = window.aauthBinding.get();
+    if (!bindingKey || !bindingPs) {
+      alert("No agent binding found. Bootstrap first.");
       return;
     }
-    if (!resourceScope) {
-      alert("Select at least one resource scope");
+    const combined = getCombinedScope();
+    if (!combined) {
+      alert("Select at least one scope");
       return;
     }
     clearLog();
     showLog();
     const hints = getHints();
-    const { bindingKey, bindingPs } = window.aauthBinding.get();
-    const haveUsableBinding = bindingKey && bindingPs === psUrl;
     let agentTokenValid = false;
     const savedAgentToken = localStorage.getItem("aauth-agent-token");
     if (savedAgentToken) {
@@ -3526,17 +3513,17 @@ ${renderJSON(body)}`;
       } catch {
       }
     }
-    if (!haveUsableBinding) {
-      window.aauthBinding.clearBinding();
-      localStorage.removeItem("aauth-agent-token");
-      const ok = await runBootstrap(psUrl, identityScope, resourceScope, window.location.origin, hints);
-      if (!ok) return;
-      if (ok.authTokenFromPending) return;
-    } else if (!agentTokenValid) {
+    if (!agentTokenValid) {
       const refreshed = await runRefresh();
       if (!refreshed) return;
     }
-    await runAuthorizationAgainstPS(psUrl, resourceScope, hints);
+    await runAuthorizationAgainstPS(bindingPs, combined, hints);
+  }
+  function getCombinedScope() {
+    const identity = (getSelectedIdentityScopes() || "").split(/\s+/).filter(Boolean);
+    const resource = (getSelectedResourceScopes() || "").split(/\s+/).filter(Boolean);
+    const all = Array.from(/* @__PURE__ */ new Set([...identity, ...resource]));
+    return all.join(" ");
   }
   async function runAuthorizationAgainstPS(psUrl, scope, hints) {
     const keyPair = window.aauthEphemeral.get();
@@ -3784,13 +3771,7 @@ ${renderJSON(body)}`;
       "success",
       formatToken("Bootstrap Token (aa-bootstrap+jwt)", pending.bootstrap_token, decodeJWTPayloadBrowser(pending.bootstrap_token))
     );
-    const res = await completeAgentServerBootstrap(pending.bootstrap_token, publicJwk, kp, {
-      psUrl: saved.psUrl,
-      authTokenFromPending: pending.auth_token
-    });
-    if (res && !res.authTokenFromPending) {
-      await runAuthorizationAgainstPS(saved.psUrl, getSelectedResourceScopes() || "playground.demo", {});
-    }
+    await completeAgentServerBootstrap(pending.bootstrap_token, publicJwk, kp, { psUrl: saved.psUrl });
     return true;
   }
   window.resumePendingInteraction = resumePendingInteraction;
@@ -3921,7 +3902,8 @@ ${renderJSON(body)}`;
       return null;
     }
   }
-  document.getElementById("authz-btn").addEventListener("click", startAuthorization);
+  document.getElementById("bootstrap-btn")?.addEventListener("click", startBootstrap);
+  document.getElementById("authz-btn").addEventListener("click", startAuthorize);
   document.addEventListener("click", (e) => {
     const btn = e.target.closest(".js-scroll-authz");
     if (!btn) return;

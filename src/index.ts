@@ -258,7 +258,7 @@ app.post('/bootstrap/verify', async (c) => {
   await c.env.WEBAUTHN_KV.delete(`bootstrap_tx:${body.bootstrap_tx_id}`)
   await c.env.WEBAUTHN_KV.delete(`challenge:${tx.challenge}`)
 
-  return c.json(await mintAgentAndResource(c.env, {
+  return c.json(await mintAgentToken(c.env, {
     aauthSub: tx.aauth_sub,
     psUrl: tx.ps_url,
     ephemeralJwk: tx.ephemeral_jwk,
@@ -408,7 +408,7 @@ app.post('/refresh/verify', async (c) => {
   await c.env.WEBAUTHN_KV.delete(`refresh_tx:${body.refresh_tx_id}`)
   await c.env.WEBAUTHN_KV.delete(`challenge:${tx.challenge}`)
 
-  return c.json(await mintAgentAndResource(c.env, {
+  return c.json(await mintAgentToken(c.env, {
     aauthSub: binding.aauth_sub,
     psUrl: binding.ps_url,
     ephemeralJwk: tx.new_ephemeral_jwk,
@@ -427,10 +427,10 @@ function sanitizeAgentLocal(input: string | undefined): string {
 
 // ── Token minting helper ──
 
-async function mintAgentAndResource(
+async function mintAgentToken(
   env: Env,
   args: { aauthSub: string; psUrl: string; ephemeralJwk: JsonWebKey }
-): Promise<{ agent_token: string; agent_id: string; expires_in: number; resource_token: string; resource_token_decoded: Record<string, unknown>; ps: string }> {
+): Promise<{ agent_token: string; agent_id: string; expires_in: number; ps: string }> {
   const origin = env.ORIGIN
   const privateKey = await importSigningKey(env.SIGNING_KEY)
   const publicJwk = await getPublicJWK(env.SIGNING_KEY)
@@ -449,29 +449,10 @@ async function mintAgentAndResource(
   }
   const agentToken = await signJWT(agentHeader, agentPayload, privateKey)
 
-  // No `scope` claim here. Per AAuth §12.2 scope is a property of the
-  // agent↔resource authorization, not the agent↔PS binding. Bootstrap and
-  // refresh mint an identity-only resource_token; the authorization scope
-  // is chosen per-request at POST /authorize.
-  const resourceHeader = { alg: 'EdDSA', typ: 'aa-resource+jwt', kid: publicJwk.kid }
-  const resourcePayload = {
-    iss: origin,
-    dwk: 'aauth-resource.json',
-    aud: args.psUrl,
-    jti: generateJTI(),
-    agent: args.aauthSub,
-    agent_jkt: await computeJwkThumbprint(args.ephemeralJwk),
-    iat: now,
-    exp: now + 300,
-  }
-  const resourceToken = await signJWT(resourceHeader, resourcePayload, privateKey)
-
   return {
     agent_token: agentToken,
     agent_id: args.aauthSub,
     expires_in: 3600,
-    resource_token: resourceToken,
-    resource_token_decoded: resourcePayload,
     ps: args.psUrl,
   }
 }
