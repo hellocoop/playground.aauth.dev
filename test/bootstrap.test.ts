@@ -300,7 +300,9 @@ describe('POST /bootstrap/challenge', () => {
     expect(stored).toBeTruthy()
     expect(stored.ps_url).toBe(PS)
     expect(stored.user_sub).toBe('pairwise-xyz')
-    expect(stored.scope).toBe('openid email')
+    // Per §12.2 scope is not a property of the binding — it must not be
+    // stashed on the bootstrap transaction.
+    expect(stored.scope).toBeUndefined()
     expect(stored.type).toBe('register')
     vi.unstubAllGlobals()
   })

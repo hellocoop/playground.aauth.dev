@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
+import { verify as httpSigVerify } from '@hellocoop/httpsig'
 import type { Env, BootstrapTokenPayload, Binding, BootstrapTransaction, RefreshTransaction } from './types'
 import {
   importSigningKey,
@@ -29,6 +30,29 @@ const app = new Hono<HonoEnv>()
 
 app.use('*', cors())
 
+// ── Scope metadata ──
+//
+// Per AAuth §12.2, scope is a property of the agent↔resource authorization
+// (POST /authorize → resource_token.scope → auth_token.scope). This map is
+// the single source of truth: the /.well-known/aauth-resource.json endpoint
+// exposes it, the UI hydrates its checkboxes from it, and /authorize rejects
+// any scope not listed here.
+const SCOPE_DESCRIPTIONS: Record<string, string> = {
+  openid: 'Verify your identity',
+  profile: 'Access your profile information',
+  name: 'Access your full name',
+  given_name: 'Access your given name',
+  family_name: 'Access your family name',
+  nickname: 'Access your nickname',
+  picture: 'Access your profile picture',
+  email: 'Access your email address',
+  phone: 'Access your phone number',
+  discord: 'Access your linked Discord account',
+  twitter: 'Access your linked Twitter account',
+  github: 'Access your linked GitHub account',
+  gitlab: 'Access your linked GitLab account',
+}
+
 // ── Well-known endpoints ──
 
 app.get('/.well-known/aauth-agent.json', (c) => {
@@ -56,12 +80,7 @@ app.get('/.well-known/aauth-resource.json', (c) => {
     jwks_uri: `${origin}/.well-known/jwks.json`,
     client_name: c.env.AGENT_NAME,
     authorization_endpoint: `${origin}/authorize`,
-    scope_descriptions: {
-      openid: 'Verify your identity',
-      profile: 'Access your profile information',
-      email: 'Access your email address',
-      phone: 'Access your phone number',
-    },
+    scope_descriptions: SCOPE_DESCRIPTIONS,
   })
 })
 
@@ -190,7 +209,6 @@ app.post('/bootstrap/challenge', async (c) => {
     user_sub: payload.sub,
     aauth_sub: aauthSub,
     ephemeral_jwk: body.ephemeral_jwk,
-    scope: payload.scope || '',
     challenge: options.challenge,
     type,
     created_at: Date.now(),
@@ -248,7 +266,6 @@ app.post('/bootstrap/verify', async (c) => {
     aauthSub: tx.aauth_sub,
     psUrl: tx.ps_url,
     ephemeralJwk: tx.ephemeral_jwk,
-    scope: tx.scope,
   }))
 })
 
@@ -278,7 +295,7 @@ app.post('/binding/forget', async (c) => {
 // fresh agent + resource tokens. No PS involvement.
 
 app.post('/refresh/challenge', async (c) => {
-  const body = await c.req.json<{ binding_key: string; new_ephemeral_jwk: JsonWebKey; scope?: string }>()
+  const body = await c.req.json<{ binding_key: string; new_ephemeral_jwk: JsonWebKey }>()
   if (!body.binding_key || !body.new_ephemeral_jwk) {
     return c.json({ error: 'missing binding_key or new_ephemeral_jwk' }, 400)
   }
@@ -296,7 +313,7 @@ app.post('/refresh/challenge', async (c) => {
     created_at: Date.now(),
   }
   const txId = base64urlEncode(crypto.getRandomValues(new Uint8Array(24)))
-  await c.env.WEBAUTHN_KV.put(`refresh_tx:${txId}`, JSON.stringify({ ...tx, scope: body.scope || '' }), { expirationTtl: 300 })
+  await c.env.WEBAUTHN_KV.put(`refresh_tx:${txId}`, JSON.stringify(tx), { expirationTtl: 300 })
 
   return c.json({
     refresh_tx_id: txId,
@@ -310,7 +327,7 @@ app.post('/refresh/verify', async (c) => {
     return c.json({ error: 'missing refresh_tx_id or webauthn_response' }, 400)
   }
 
-  const tx = (await c.env.WEBAUTHN_KV.get(`refresh_tx:${body.refresh_tx_id}`, 'json')) as (RefreshTransaction & { scope?: string }) | null
+  const tx = (await c.env.WEBAUTHN_KV.get(`refresh_tx:${body.refresh_tx_id}`, 'json')) as RefreshTransaction | null
   if (!tx) return c.json({ error: 'transaction not found or expired' }, 400)
 
   const binding = await getBinding(c.env, tx.binding_key)
@@ -334,7 +351,6 @@ app.post('/refresh/verify', async (c) => {
     aauthSub: binding.aauth_sub,
     psUrl: binding.ps_url,
     ephemeralJwk: tx.new_ephemeral_jwk,
-    scope: tx.scope || '',
   }))
 })
 
@@ -352,7 +368,7 @@ function sanitizeAgentLocal(input: string | undefined): string {
 
 async function mintAgentAndResource(
   env: Env,
-  args: { aauthSub: string; psUrl: string; ephemeralJwk: JsonWebKey; scope: string }
+  args: { aauthSub: string; psUrl: string; ephemeralJwk: JsonWebKey }
 ): Promise<{ agent_token: string; agent_id: string; expires_in: number; resource_token: string; resource_token_decoded: Record<string, unknown>; ps: string }> {
   const origin = env.ORIGIN
   const privateKey = await importSigningKey(env.SIGNING_KEY)
@@ -372,6 +388,10 @@ async function mintAgentAndResource(
   }
   const agentToken = await signJWT(agentHeader, agentPayload, privateKey)
 
+  // No `scope` claim here. Per AAuth §12.2 scope is a property of the
+  // agent↔resource authorization, not the agent↔PS binding. Bootstrap and
+  // refresh mint an identity-only resource_token; the authorization scope
+  // is chosen per-request at POST /authorize.
   const resourceHeader = { alg: 'EdDSA', typ: 'aa-resource+jwt', kid: publicJwk.kid }
   const resourcePayload = {
     iss: origin,
@@ -380,7 +400,6 @@ async function mintAgentAndResource(
     jti: generateJTI(),
     agent: args.aauthSub,
     agent_jkt: await computeJwkThumbprint(args.ephemeralJwk),
-    scope: args.scope,
     iat: now,
     exp: now + 300,
   }
@@ -456,38 +475,64 @@ app.post('/token', async (c) => {
 // ── Authorization (resource token issuance) ──
 
 app.post('/authorize', async (c) => {
-  const body = await c.req.json<{
-    ps: string
-    scope: string
-  }>()
+  // Read the body as text — c.req.json() would consume the stream before
+  // httpsig.verify() sees it (needed for content-digest when present).
+  const rawBody = await c.req.text()
+
+  // httpsig.verify extracts agent_token.cnf.jwk from Signature-Key and uses
+  // it to verify the RFC 9421 signature. It does NOT verify the token's own
+  // JWT signature — we do that separately below against our JWKS.
+  const url = new URL(c.req.url)
+  const sigResult = await httpSigVerify({
+    method: c.req.method,
+    authority: url.host,
+    path: url.pathname,
+    query: url.search.replace(/^\?/, ''),
+    headers: c.req.raw.headers,
+    body: rawBody,
+  })
+  if (!sigResult.verified) {
+    return c.json({ error: `signature verification failed: ${sigResult.error || 'unknown'}` }, 401)
+  }
+  if (sigResult.keyType !== 'jwt' || !sigResult.jwt) {
+    return c.json({ error: 'Signature-Key must use sig=jwt' }, 401)
+  }
+
+  // Verify the agent_token's JWT signature against our own JWKS — proves we
+  // issued it. Together with the httpsig check above, this proves both that
+  // the token is ours and that the caller holds the cnf-bound ephemeral key.
+  const agentToken = sigResult.jwt.raw
+  const origin = c.env.ORIGIN
+  const ourJwk = await getPublicJWK(c.env.SIGNING_KEY)
+  let agentPayload: Record<string, unknown>
+  try {
+    const { payload } = await verifyJWT(agentToken, { keys: [ourJwk] })
+    agentPayload = payload as Record<string, unknown>
+  } catch (err) {
+    return c.json({ error: `agent_token invalid: ${(err as Error).message}` }, 401)
+  }
+  if (agentPayload.iss !== origin) return c.json({ error: 'agent_token iss mismatch' }, 401)
+  const now = Math.floor(Date.now() / 1000)
+  if (!agentPayload.exp || (agentPayload.exp as number) < now) return c.json({ error: 'agent_token expired' }, 401)
+
+  // Now parse the body we already read.
+  let body: { ps: string; scope: string }
+  try {
+    body = JSON.parse(rawBody) as { ps: string; scope: string }
+  } catch {
+    return c.json({ error: 'invalid JSON body' }, 400)
+  }
 
   if (!body.ps || !body.scope) {
     return c.json({ error: 'missing required fields: ps, scope' }, 400)
   }
 
-  // Authenticate the caller via the agent_token carried in Signature-Key
-  // (sig=jwt scheme, RFC 9421 HTTP Message Signatures). Extract the JWT,
-  // then verify against our own JWKS — we issued it, so iss == our origin.
-  //
-  // Future hardening: also verify the full HTTP message signature (ties
-  // the specific request to the cnf-bound ephemeral key). For now we
-  // just verify the agent_token itself, matching the pre-existing trust
-  // model for this endpoint.
-  const sigKeyHeader = c.req.header('Signature-Key') || ''
-  const jwtMatch = sigKeyHeader.match(/sig=jwt\s*;\s*jwt\s*=\s*"([^"]+)"/)
-  if (!jwtMatch) {
-    return c.json({ error: 'missing Signature-Key: sig=jwt' }, 401)
-  }
-  const agentToken = jwtMatch[1]
-  const origin = c.env.ORIGIN
-  try {
-    const publicJwk = await getPublicJWK(c.env.SIGNING_KEY)
-    const { payload } = await verifyJWT(agentToken, { keys: [publicJwk] })
-    if (payload.iss !== origin) return c.json({ error: 'agent_token iss mismatch' }, 401)
-    const now = Math.floor(Date.now() / 1000)
-    if (!payload.exp || (payload.exp as number) < now) return c.json({ error: 'agent_token expired' }, 401)
-  } catch (err) {
-    return c.json({ error: `agent_token invalid: ${(err as Error).message}` }, 401)
+  // Per §12.2, resource_token.scope MUST only contain values the resource
+  // advertises in its scope_descriptions. Reject unknowns before we sign.
+  const requestedScopes = body.scope.trim().split(/\s+/).filter(Boolean)
+  const unknown = requestedScopes.filter((s) => !(s in SCOPE_DESCRIPTIONS))
+  if (unknown.length > 0) {
+    return c.json({ error: 'invalid_scope', unknown }, 400)
   }
 
   // Validate PS URL is HTTPS
@@ -528,20 +573,17 @@ app.post('/authorize', async (c) => {
     }, 502)
   }
 
-  // Step 2: Create resource token
-  const agentPayload = decodeJWTPayload(agentToken)
+  // Step 2: Create resource token.
   const agentJkt = await computeJwkThumbprint(
     (agentPayload.cnf as { jwk: JsonWebKey }).jwk
   )
 
   const privateKey = await importSigningKey(c.env.SIGNING_KEY)
-  const publicJwk = await getPublicJWK(c.env.SIGNING_KEY)
 
-  const now = Math.floor(Date.now() / 1000)
   const rtHeader = {
     alg: 'EdDSA',
     typ: 'aa-resource+jwt',
-    kid: publicJwk.kid,
+    kid: ourJwk.kid,
   }
   const rtPayload = {
     iss: origin,

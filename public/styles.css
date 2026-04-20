@@ -291,6 +291,37 @@ a { color: var(--accent); }
   cursor: pointer;
 }
 
+/* Hints: each row is `[ ] name: [ input ]`. The checkbox gates whether
+   the hint is sent — independent of whether the input has a value. */
+.hints-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+.hint-row {
+  display: grid;
+  grid-template-columns: auto 8rem 1fr;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0;
+  color: var(--text);
+  font-size: 0.9rem;
+  cursor: default;
+}
+.hint-row .hint-enable { cursor: pointer; }
+.hint-row .hint-name {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.hint-row input[type="text"] {
+  margin: 0;
+}
+.hint-row:has(.hint-enable:not(:checked)) input[type="text"] {
+  opacity: 0.55;
+}
+
 .ps-current {
   margin-left: auto;
   color: var(--text);

@@ -429,6 +429,37 @@ function enableAuthzSection() {
   }
 }
 
+// ── Scope picker hydration ──
+// Renders from /.well-known/aauth-resource.json so the UI can't offer a
+// scope /authorize would later reject. openid is always shown as required.
+
+async function hydrateScopesFromMetadata() {
+  const grid = document.getElementById('scope-grid')
+  if (!grid) return
+  let descriptions = {}
+  try {
+    const res = await fetch('/.well-known/aauth-resource.json')
+    const body = await res.json()
+    descriptions = body?.scope_descriptions || {}
+  } catch {
+    // Fall through with empty descriptions so at least openid renders.
+  }
+  const others = Object.keys(descriptions).filter((s) => s !== 'openid').sort()
+  const row = (scope, opts = {}) => {
+    const attrs = [`value="${scope}"`]
+    if (opts.checked) attrs.push('checked')
+    if (opts.disabled) attrs.push('disabled')
+    const title = descriptions[scope] ? ` title="${descriptions[scope].replace(/"/g, '&quot;')}"` : ''
+    const required = opts.required ? ' <span class="scope-required">*</span>' : ''
+    return `<label class="checkbox-label"${title}><input type="checkbox" ${attrs.join(' ')}> <span>${scope}${required}</span></label>`
+  }
+  const html = [
+    row('openid', { checked: true, disabled: true, required: true }),
+    ...others.map((s) => row(s)),
+  ].join('')
+  grid.innerHTML = html
+}
+
 // ── Settings persistence ──
 // Mirrors the playground.hello.dev pattern: one localStorage key holds all
 // user-customizable settings (PS selection, scopes, hints) as JSON.
@@ -465,21 +496,32 @@ function loadSettings() {
     updatePSCurrent()
   }
 
-  // Restore scope checkboxes (if persisted; otherwise leave HTML defaults)
+  // Restore scope checkboxes (if persisted; otherwise leave HTML defaults).
+  // Scoped to #scope-grid so we don't collide with the per-hint enable
+  // checkboxes that also live inside #authz-section.
   if (Array.isArray(saved.scopes)) {
     const set = new Set(saved.scopes)
-    const boxes = document.querySelectorAll('#authz-section input[type="checkbox"]')
+    const boxes = document.querySelectorAll('#scope-grid input[type="checkbox"]')
     for (const b of boxes) {
       if (b.disabled) continue // openid stays checked regardless
       b.checked = set.has(b.value)
     }
   }
 
-  // Restore hint inputs
+  // Restore hint inputs + their enable checkboxes. saved.hints is
+  // `{ [id]: string }` for values and saved.hints_enabled is `[id, ...]`
+  // for the enabled set.
   if (saved.hints && typeof saved.hints === 'object') {
     for (const f of HINT_FIELDS) {
       const el = document.getElementById(f)
       if (el && typeof saved.hints[f] === 'string') el.value = saved.hints[f]
+    }
+  }
+  if (Array.isArray(saved.hints_enabled)) {
+    const set = new Set(saved.hints_enabled)
+    for (const f of HINT_FIELDS) {
+      const cb = document.querySelector(`.hint-enable[data-hint-for="${f}"]`)
+      if (cb) cb.checked = set.has(f)
     }
   }
 }
@@ -490,16 +532,25 @@ function saveSettings() {
   const ps = psRadio ? psRadio.value : DEFAULT_PS
 
   const scopes = Array.from(
-    document.querySelectorAll('#authz-section input[type="checkbox"]:checked')
+    document.querySelectorAll('#scope-grid input[type="checkbox"]:checked')
   ).map(b => b.value)
 
   const hints = {}
+  const hints_enabled = []
   for (const f of HINT_FIELDS) {
     const v = document.getElementById(f)?.value?.trim()
     if (v) hints[f] = v
+    const cb = document.querySelector(`.hint-enable[data-hint-for="${f}"]`)
+    if (cb?.checked) hints_enabled.push(f)
   }
 
-  localStorage.setItem(SETTINGS_KEY, JSON.stringify({ ps, ps_custom: psCustom, scopes, hints }))
+  localStorage.setItem(SETTINGS_KEY, JSON.stringify({
+    ps,
+    ps_custom: psCustom,
+    scopes,
+    hints,
+    hints_enabled,
+  }))
 }
 
 // Returns the URL the user has currently chosen for the PS.
@@ -536,9 +587,14 @@ function wireSettingsAutosave() {
 
 // ── Initialization ──
 
-// Restore PS / scopes / hints from localStorage and start auto-saving on edit
-loadSettings()
-wireSettingsAutosave()
+// Hydrate the scope picker from resource metadata BEFORE restoring saved
+// selections — loadSettings queries the checkboxes by value, so they have
+// to exist in the DOM first.
+;(async () => {
+  await hydrateScopesFromMetadata()
+  loadSettings()
+  wireSettingsAutosave()
+})()
 
 // Copy button SVG icons — inlined for crisp rendering at any scale.
 const COPY_ICON_HTML = `

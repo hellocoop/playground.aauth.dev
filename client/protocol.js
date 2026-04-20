@@ -154,6 +154,19 @@ function formatToken(label, token, decoded) {
   `
 }
 
+// Inline variant of formatToken used by Authorization Granted — no outer
+// collapsible, since the surrounding "Authorization Granted" step already
+// labels the token.
+function formatAuthToken(token) {
+  return `
+    ${tokenWrap(renderEncodedJWT(token), 'encoded')}
+    <details class="section-group" open>
+      <summary class="section-heading"><span>Decoded</span>${CHEVRON_SVG}</summary>
+      ${tokenWrap(renderJSON(decodeJWTPayloadBrowser(token)))}
+    </details>
+  `
+}
+
 // ── Scope collection ──
 
 function getSelectedScopes() {
@@ -165,6 +178,11 @@ function getHints() {
   const hints = {}
   const fields = ['login-hint', 'domain-hint', 'provider-hint', 'tenant']
   for (const field of fields) {
+    // Per-hint checkbox gates whether the hint is sent. This is explicit on/off
+    // rather than implicit from value-presence — lets the user keep a value
+    // parked in the input while disabling it for a single request.
+    const enabled = document.querySelector(`.hint-enable[data-hint-for="${field}"]`)?.checked
+    if (!enabled) continue
     const val = document.getElementById(field)?.value?.trim()
     if (val) {
       // Convert kebab-case id to snake_case param name
@@ -181,7 +199,9 @@ function getHints() {
 // resource_token). Runs once per (PS, user) pair; the resulting binding_key
 // is stored in localStorage so /refresh can reuse the same credentials.
 
-async function runBootstrap(psUrl, scope, hints) {
+// No scope parameter: per §12.2 scope belongs on the agent↔resource axis
+// (/authorize), not the binding ceremony.
+async function runBootstrap(psUrl, hints) {
   const agentServerOrigin = window.location.origin
 
   addLogSection('Bootstrap')
@@ -223,7 +243,6 @@ async function runBootstrap(psUrl, scope, hints) {
   // key to bind into the resulting bootstrap_token.cnf.
   const psBootstrapBody = {
     agent_server: agentServerOrigin,
-    scope,
     ...hints,
   }
   const psBootReqStep = addLogStep(`POST ${new URL(bootstrapEndpoint).pathname}`, 'pending',
@@ -284,7 +303,6 @@ async function runBootstrap(psUrl, scope, hints) {
     pollUrl: absolutePollUrl,
     bootstrapEndpoint,
     psUrl,
-    scope,
   })
 
   const pending = await pollForBootstrapToken(absolutePollUrl, keyPair, publicJwk, interactionStep)
@@ -298,7 +316,6 @@ async function runBootstrap(psUrl, scope, hints) {
   // Step 4: exchange with our own agent server /bootstrap/challenge.
   return await completeAgentServerBootstrap(pending.bootstrap_token, publicJwk, keyPair, {
     psUrl,
-    scope,
     authTokenFromPending: pending.auth_token,
   })
 }
@@ -311,6 +328,19 @@ async function runBootstrap(psUrl, scope, hints) {
 // On 202 we loop immediately; on network error we back off briefly so a
 // dead connection doesn't spin.
 async function pollForBootstrapToken(absolutePollUrl, keyPair, publicJwk, interactionStep) {
+  const pollPath = new URL(absolutePollUrl).pathname
+  // Single log entry for the whole long-poll. Each HTTP attempt isn't
+  // surfaced (would flood the log at ~30s cadence) — we just show the
+  // request shape once and resolve when the poll terminates.
+  const pollStep = addLogStep(`GET ${pollPath} (long-poll)`, 'pending',
+    `<p>Long-polling the PS pending URL. <code>Prefer: wait=30</code> asks the PS to hold the request for up to 30s and return as soon as state changes. On 202 the client loops immediately.</p>` +
+    formatRequest('GET', absolutePollUrl, {
+      'Prefer': 'wait=30',
+      'Signature-Input': 'sig=("@method" "@authority" "@path" "signature-key");created=...',
+      'Signature': 'sig=:...:',
+      'Signature-Key': `sig=hwk;kty="${publicJwk.kty}";crv="${publicJwk.crv}";x="${publicJwk.x}"`,
+    }, null)
+  )
   while (true) {
     try {
       const res = await sigFetch(absolutePollUrl, {
@@ -328,11 +358,13 @@ async function pollForBootstrapToken(absolutePollUrl, keyPair, publicJwk, intera
         const token = body?.bootstrap_token
         if (!token) {
           trace('poll 200 missing bootstrap_token', body)
+          resolveStep(pollStep, 'error', `GET ${pollPath} \u2192 200 (no bootstrap_token)`)
           resolveStep(interactionStep, 'error', 'Pending returned no bootstrap_token')
           addLogStep('Bad /pending response', 'error', formatResponse(200, null, body))
           return null
         }
         trace('poll token extracted, length', token.length)
+        resolveStep(pollStep, 'success', `GET ${pollPath} \u2192 200`)
         resolveStep(interactionStep, 'success', 'User Consent Completed')
         // Return the full body so callers can pick up auth_token if the PS
         // bundles one — that lets us skip the /authorize + PS /token round
@@ -341,6 +373,7 @@ async function pollForBootstrapToken(absolutePollUrl, keyPair, publicJwk, intera
       }
       if (res.status === 403) {
         clearPendingBootstrap()
+        resolveStep(pollStep, 'error', `GET ${pollPath} \u2192 403`)
         resolveStep(interactionStep, 'error', 'Consent Denied')
         addLogStep('User denied consent', 'error',
           formatResponse(403, null, await res.json().catch(() => null)) + anotherRequestButton())
@@ -348,6 +381,7 @@ async function pollForBootstrapToken(absolutePollUrl, keyPair, publicJwk, intera
       }
       if (res.status === 408) {
         clearPendingBootstrap()
+        resolveStep(pollStep, 'error', `GET ${pollPath} \u2192 408`)
         resolveStep(interactionStep, 'error', 'Consent Timed Out')
         addLogStep('Interaction timed out', 'error',
           formatResponse(408, null, null) + anotherRequestButton())
@@ -493,7 +527,7 @@ async function completeAgentServerBootstrap(bootstrapToken, publicJwk, keyPair, 
     addLogSection('Authorization')
     addLogStep('Authorization Granted (from bootstrap)', 'success',
       `<p>The PS returned an <code>auth_token</code> alongside the bootstrap_token in the pending response. Skipping the PS /token round trip.</p>` +
-      formatToken('Auth Token', ctx.authTokenFromPending, decodeJWTPayloadBrowser(ctx.authTokenFromPending)) +
+      formatAuthToken(ctx.authTokenFromPending) +
       anotherRequestButton()
     )
   }
@@ -516,7 +550,8 @@ async function deriveBindingKeyBrowser(psUrl, userSub) {
 // Uses the stored binding_key to ask the agent server for a fresh agent +
 // resource token pair under a rotated ephemeral key. No PS involvement.
 
-async function runRefresh(scope) {
+// No scope parameter: see runBootstrap above.
+async function runRefresh() {
   const { bindingKey } = window.aauthBinding.get()
   if (!bindingKey) return null
 
@@ -532,7 +567,6 @@ async function runRefresh(scope) {
     formatRequest('POST', '/refresh/challenge', { 'Content-Type': 'application/json' }, {
       binding_key: bindingKey,
       new_ephemeral_jwk: publicJwk,
-      scope,
     })
   )
 
@@ -541,7 +575,7 @@ async function runRefresh(scope) {
     const res = await fetch('/refresh/challenge', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ binding_key: bindingKey, new_ephemeral_jwk: publicJwk, scope }),
+      body: JSON.stringify({ binding_key: bindingKey, new_ephemeral_jwk: publicJwk }),
     })
     challengeData = await res.json()
     if (!res.ok) {
@@ -653,7 +687,7 @@ async function startAuthorization() {
     // Full bootstrap — also drops any stale binding/token.
     window.aauthBinding.clearBinding()
     localStorage.removeItem('aauth-agent-token')
-    const ok = await runBootstrap(psUrl, scope, hints)
+    const ok = await runBootstrap(psUrl, hints)
     if (!ok) return
     // If bootstrap already produced an auth_token (PS bundled it into the
     // pending response), we're done — no need to hit PS /token, which
@@ -661,7 +695,7 @@ async function startAuthorization() {
     if (ok.authTokenFromPending) return
     // Otherwise fall through and fetch auth_token via PS /token.
   } else if (!agentTokenValid) {
-    const refreshed = await runRefresh(scope)
+    const refreshed = await runRefresh()
     if (!refreshed) return
   }
 
@@ -769,8 +803,7 @@ async function runAuthorizationAgainstPS(psUrl, scope, hints) {
 
     if (psRes.status === 200 && psBody?.auth_token) {
       addLogStep('Authorization Granted', 'success',
-        formatResponse(200, responseHeaders, psBody) +
-        formatToken('Auth Token', psBody.auth_token, decodeJWTPayloadBrowser(psBody.auth_token)) +
+        formatAuthToken(psBody.auth_token) +
         anotherRequestButton()
       )
     } else if (psRes.status === 202) {
@@ -925,11 +958,12 @@ async function resumePendingInteraction() {
   )
   const res = await completeAgentServerBootstrap(pending.bootstrap_token, publicJwk, kp, {
     psUrl: saved.psUrl,
-    scope: saved.scope || 'openid',
     authTokenFromPending: pending.auth_token,
   })
   if (res && !res.authTokenFromPending) {
-    await runAuthorizationAgainstPS(saved.psUrl, saved.scope || 'openid', {})
+    // User's current scope selection — they returned to this tab right after
+    // PS consent, so the checkboxes reflect what they want for /authorize.
+    await runAuthorizationAgainstPS(saved.psUrl, getSelectedScopes() || 'openid', {})
   }
   return true
 }
@@ -992,6 +1026,17 @@ async function startAuthTokenPolling(pollUrl, baseUrl, interactionStep) {
   if (!keyPair || !agentToken) return
   const signingJwk = await crypto.subtle.exportKey('jwk', keyPair.publicKey)
 
+  const pollPath = new URL(absolutePollUrl).pathname
+  const pollStep = addLogStep(`GET ${pollPath} (long-poll)`, 'pending',
+    `<p>Long-polling the PS pending URL for the auth_token. <code>Prefer: wait=30</code> asks the PS to hold the request for up to 30s; on 202 the client loops immediately.</p>` +
+    formatRequest('GET', absolutePollUrl, {
+      'Prefer': 'wait=30',
+      'Signature-Input': 'sig=("@method" "@authority" "@path" "signature-key");created=...',
+      'Signature': 'sig=:...:',
+      'Signature-Key': `sig=jwt;jwt="${agentToken?.substring(0, 20)}..."`,
+    }, null)
+  )
+
   while (true) {
     try {
       const res = await sigFetch(absolutePollUrl, {
@@ -1005,10 +1050,10 @@ async function startAuthTokenPolling(pollUrl, baseUrl, interactionStep) {
       if (res.status === 200) {
         clearPendingAuthorize()
         const body = await res.json()
+        resolveStep(pollStep, 'success', `GET ${pollPath} \u2192 200`)
         resolveStep(interactionStep, 'success', 'Interaction Completed')
         addLogStep('Authorization Granted', 'success',
-          formatResponse(200, null, body) +
-          (body.auth_token ? formatToken('Auth Token', body.auth_token, decodeJWTPayloadBrowser(body.auth_token)) : '') +
+          (body.auth_token ? formatAuthToken(body.auth_token) : '') +
           anotherRequestButton())
         return
       }
@@ -1016,6 +1061,7 @@ async function startAuthTokenPolling(pollUrl, baseUrl, interactionStep) {
         clearPendingAuthorize()
         const body = await res.json().catch(() => null)
         const label = res.status === 403 ? 'Interaction Denied' : 'Interaction Timed Out'
+        resolveStep(pollStep, 'error', `GET ${pollPath} \u2192 ${res.status}`)
         resolveStep(interactionStep, 'error', label)
         addLogStep(`Authorization ${res.status === 403 ? 'Denied' : 'Timed Out'}`, 'error',
           formatResponse(res.status, null, body) + anotherRequestButton())

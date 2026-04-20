@@ -50,7 +50,7 @@
     <fieldset class="section-box" id="auth-card" data-test="auth-card">
       <legend>Agent Identity</legend>
       <div id="auth-form">
-        <p style="color: var(--muted); font-size: 0.85rem;">Agent identity is established when bootstrap completes. Choose a Person Server below and click Continue to begin.</p>
+        <p style="color: var(--muted); font-size: 0.85rem;">Agent identity is established when bootstrap completes.<br/>Choose a Person Server below and click Continue to begin.</p>
       </div>
       <div id="auth-info" class="hidden">
         <p><span class="step-status step-status-success">&#x2713;</span> Bound as <strong id="auth-user"></strong></p>
@@ -114,21 +114,7 @@
           <span>Scopes</span>
           <svg class="section-chevron" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5"/></svg>
         </summary>
-        <div class="scope-grid">
-        <label class="checkbox-label"><input type="checkbox" value="openid" checked disabled> <span>openid <span class="scope-required">*</span></span></label>
-        <label class="checkbox-label"><input type="checkbox" value="profile" checked> <span>profile</span></label>
-        <label class="checkbox-label"><input type="checkbox" value="name"> <span>name</span></label>
-        <label class="checkbox-label"><input type="checkbox" value="email"> <span>email</span></label>
-        <label class="checkbox-label"><input type="checkbox" value="picture"> <span>picture</span></label>
-        <label class="checkbox-label"><input type="checkbox" value="nickname"> <span>nickname</span></label>
-        <label class="checkbox-label"><input type="checkbox" value="given_name"> <span>given_name</span></label>
-        <label class="checkbox-label"><input type="checkbox" value="family_name"> <span>family_name</span></label>
-        <label class="checkbox-label"><input type="checkbox" value="phone"> <span>phone</span></label>
-        <label class="checkbox-label"><input type="checkbox" value="discord"> <span>discord</span></label>
-        <label class="checkbox-label"><input type="checkbox" value="twitter"> <span>twitter</span></label>
-        <label class="checkbox-label"><input type="checkbox" value="github"> <span>github</span></label>
-        <label class="checkbox-label"><input type="checkbox" value="gitlab"> <span>gitlab</span></label>
-        </div>
+        <div class="scope-grid" id="scope-grid"></div>
       </details>
 
       <details class="section-group">
@@ -136,15 +122,27 @@
           <span>Hints</span>
           <svg class="section-chevron" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5"/></svg>
         </summary>
-        <div style="margin-top: 0.5rem;">
-          <label>login_hint</label>
-          <input type="text" id="login-hint" placeholder="user@example.com">
-          <label>domain_hint</label>
-          <input type="text" id="domain-hint" placeholder="example.com">
-          <label>provider_hint</label>
-          <input type="text" id="provider-hint" placeholder="google">
-          <label>tenant</label>
-          <input type="text" id="tenant" placeholder="org-123">
+        <div class="hints-grid">
+          <label class="hint-row">
+            <input type="checkbox" class="hint-enable" data-hint-for="login-hint">
+            <span class="hint-name">login_hint</span>
+            <input type="text" id="login-hint" placeholder="user@example.com">
+          </label>
+          <label class="hint-row">
+            <input type="checkbox" class="hint-enable" data-hint-for="domain-hint">
+            <span class="hint-name">domain_hint</span>
+            <input type="text" id="domain-hint" placeholder="example.com">
+          </label>
+          <label class="hint-row">
+            <input type="checkbox" class="hint-enable" data-hint-for="provider-hint">
+            <span class="hint-name">provider_hint</span>
+            <input type="text" id="provider-hint" placeholder="github">
+          </label>
+          <label class="hint-row">
+            <input type="checkbox" class="hint-enable" data-hint-for="tenant">
+            <span class="hint-name">tenant</span>
+            <input type="text" id="tenant" placeholder="ten_xxx_xxx">
+          </label>
         </div>
       </details>
 

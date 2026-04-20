@@ -2957,6 +2957,15 @@ ${renderJSON(body)}`;
     </details>
   `;
   }
+  function formatAuthToken(token) {
+    return `
+    ${tokenWrap(renderEncodedJWT(token), "encoded")}
+    <details class="section-group" open>
+      <summary class="section-heading"><span>Decoded</span>${CHEVRON_SVG}</summary>
+      ${tokenWrap(renderJSON(decodeJWTPayloadBrowser(token)))}
+    </details>
+  `;
+  }
   function getSelectedScopes() {
     const checkboxes = document.querySelectorAll('#authz-section input[type="checkbox"]:checked');
     return Array.from(checkboxes).map((cb) => cb.value).join(" ");
@@ -2965,6 +2974,8 @@ ${renderJSON(body)}`;
     const hints = {};
     const fields = ["login-hint", "domain-hint", "provider-hint", "tenant"];
     for (const field of fields) {
+      const enabled = document.querySelector(`.hint-enable[data-hint-for="${field}"]`)?.checked;
+      if (!enabled) continue;
       const val = document.getElementById(field)?.value?.trim();
       if (val) {
         hints[field.replace("-", "_")] = val;
@@ -2972,7 +2983,7 @@ ${renderJSON(body)}`;
     }
     return hints;
   }
-  async function runBootstrap(psUrl, scope, hints) {
+  async function runBootstrap(psUrl, hints) {
     const agentServerOrigin = window.location.origin;
     addLogSection("Bootstrap");
     const { keyPair, publicJwk } = await window.aauthEphemeral.rotate();
@@ -3010,7 +3021,6 @@ ${renderJSON(body)}`;
     const bootstrapEndpoint = psMetadata.bootstrap_endpoint || `${psUrl.replace(/\/$/, "")}/bootstrap`;
     const psBootstrapBody = {
       agent_server: agentServerOrigin,
-      scope,
       ...hints
     };
     const psBootReqStep = addLogStep(
@@ -3079,8 +3089,7 @@ ${renderJSON(body)}`;
     savePendingBootstrap({
       pollUrl: absolutePollUrl,
       bootstrapEndpoint,
-      psUrl,
-      scope
+      psUrl
     });
     const pending = await pollForBootstrapToken(absolutePollUrl, keyPair, publicJwk, interactionStep);
     trace("pollForBootstrapToken returned", pending ? { hasToken: !!pending.bootstrap_token, hasAuth: !!pending.auth_token } : null);
@@ -3092,11 +3101,21 @@ ${renderJSON(body)}`;
     );
     return await completeAgentServerBootstrap(pending.bootstrap_token, publicJwk, keyPair, {
       psUrl,
-      scope,
       authTokenFromPending: pending.auth_token
     });
   }
   async function pollForBootstrapToken(absolutePollUrl, keyPair, publicJwk, interactionStep) {
+    const pollPath = new URL(absolutePollUrl).pathname;
+    const pollStep = addLogStep(
+      `GET ${pollPath} (long-poll)`,
+      "pending",
+      `<p>Long-polling the PS pending URL. <code>Prefer: wait=30</code> asks the PS to hold the request for up to 30s and return as soon as state changes. On 202 the client loops immediately.</p>` + formatRequest("GET", absolutePollUrl, {
+        "Prefer": "wait=30",
+        "Signature-Input": 'sig=("@method" "@authority" "@path" "signature-key");created=...',
+        "Signature": "sig=:...:",
+        "Signature-Key": `sig=hwk;kty="${publicJwk.kty}";crv="${publicJwk.crv}";x="${publicJwk.x}"`
+      }, null)
+    );
     while (true) {
       try {
         const res = await (0, import_httpsig.fetch)(absolutePollUrl, {
@@ -3114,16 +3133,19 @@ ${renderJSON(body)}`;
           const token = body?.bootstrap_token;
           if (!token) {
             trace("poll 200 missing bootstrap_token", body);
+            resolveStep(pollStep, "error", `GET ${pollPath} \u2192 200 (no bootstrap_token)`);
             resolveStep(interactionStep, "error", "Pending returned no bootstrap_token");
             addLogStep("Bad /pending response", "error", formatResponse(200, null, body));
             return null;
           }
           trace("poll token extracted, length", token.length);
+          resolveStep(pollStep, "success", `GET ${pollPath} \u2192 200`);
           resolveStep(interactionStep, "success", "User Consent Completed");
           return { bootstrap_token: token, auth_token: body?.auth_token, raw: body };
         }
         if (res.status === 403) {
           clearPendingBootstrap();
+          resolveStep(pollStep, "error", `GET ${pollPath} \u2192 403`);
           resolveStep(interactionStep, "error", "Consent Denied");
           addLogStep(
             "User denied consent",
@@ -3134,6 +3156,7 @@ ${renderJSON(body)}`;
         }
         if (res.status === 408) {
           clearPendingBootstrap();
+          resolveStep(pollStep, "error", `GET ${pollPath} \u2192 408`);
           resolveStep(interactionStep, "error", "Consent Timed Out");
           addLogStep(
             "Interaction timed out",
@@ -3275,7 +3298,7 @@ ${renderJSON(body)}`;
       addLogStep(
         "Authorization Granted (from bootstrap)",
         "success",
-        `<p>The PS returned an <code>auth_token</code> alongside the bootstrap_token in the pending response. Skipping the PS /token round trip.</p>` + formatToken("Auth Token", ctx.authTokenFromPending, decodeJWTPayloadBrowser(ctx.authTokenFromPending)) + anotherRequestButton()
+        `<p>The PS returned an <code>auth_token</code> alongside the bootstrap_token in the pending response. Skipping the PS /token round trip.</p>` + formatAuthToken(ctx.authTokenFromPending) + anotherRequestButton()
       );
     }
     return { result, authTokenFromPending: ctx.authTokenFromPending || null };
@@ -3288,7 +3311,7 @@ ${renderJSON(body)}`;
     for (const b of bytes) binary += String.fromCharCode(b);
     return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
   }
-  async function runRefresh(scope) {
+  async function runRefresh() {
     const { bindingKey } = window.aauthBinding.get();
     if (!bindingKey) return null;
     addLogSection("Refresh");
@@ -3303,8 +3326,7 @@ ${renderJSON(body)}`;
       "pending",
       formatRequest("POST", "/refresh/challenge", { "Content-Type": "application/json" }, {
         binding_key: bindingKey,
-        new_ephemeral_jwk: publicJwk,
-        scope
+        new_ephemeral_jwk: publicJwk
       })
     );
     let challengeData;
@@ -3312,7 +3334,7 @@ ${renderJSON(body)}`;
       const res = await fetch("/refresh/challenge", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ binding_key: bindingKey, new_ephemeral_jwk: publicJwk, scope })
+        body: JSON.stringify({ binding_key: bindingKey, new_ephemeral_jwk: publicJwk })
       });
       challengeData = await res.json();
       if (!res.ok) {
@@ -3419,11 +3441,11 @@ ${renderJSON(body)}`;
     if (!haveUsableBinding) {
       window.aauthBinding.clearBinding();
       localStorage.removeItem("aauth-agent-token");
-      const ok = await runBootstrap(psUrl, scope, hints);
+      const ok = await runBootstrap(psUrl, hints);
       if (!ok) return;
       if (ok.authTokenFromPending) return;
     } else if (!agentTokenValid) {
-      const refreshed = await runRefresh(scope);
+      const refreshed = await runRefresh();
       if (!refreshed) return;
     }
     await runAuthorizationAgainstPS(psUrl, scope, hints);
@@ -3527,7 +3549,7 @@ ${renderJSON(body)}`;
         addLogStep(
           "Authorization Granted",
           "success",
-          formatResponse(200, responseHeaders, psBody) + formatToken("Auth Token", psBody.auth_token, decodeJWTPayloadBrowser(psBody.auth_token)) + anotherRequestButton()
+          formatAuthToken(psBody.auth_token) + anotherRequestButton()
         );
       } else if (psRes.status === 202) {
         const reqHeader = psRes.headers.get("aauth-requirement") || "";
@@ -3673,11 +3695,10 @@ ${renderJSON(body)}`;
     );
     const res = await completeAgentServerBootstrap(pending.bootstrap_token, publicJwk, kp, {
       psUrl: saved.psUrl,
-      scope: saved.scope || "openid",
       authTokenFromPending: pending.auth_token
     });
     if (res && !res.authTokenFromPending) {
-      await runAuthorizationAgainstPS(saved.psUrl, saved.scope || "openid", {});
+      await runAuthorizationAgainstPS(saved.psUrl, getSelectedScopes() || "openid", {});
     }
     return true;
   }
@@ -3730,6 +3751,17 @@ ${renderJSON(body)}`;
     const agentToken = localStorage.getItem("aauth-agent-token");
     if (!keyPair || !agentToken) return;
     const signingJwk = await crypto.subtle.exportKey("jwk", keyPair.publicKey);
+    const pollPath = new URL(absolutePollUrl).pathname;
+    const pollStep = addLogStep(
+      `GET ${pollPath} (long-poll)`,
+      "pending",
+      `<p>Long-polling the PS pending URL for the auth_token. <code>Prefer: wait=30</code> asks the PS to hold the request for up to 30s; on 202 the client loops immediately.</p>` + formatRequest("GET", absolutePollUrl, {
+        "Prefer": "wait=30",
+        "Signature-Input": 'sig=("@method" "@authority" "@path" "signature-key");created=...',
+        "Signature": "sig=:...:",
+        "Signature-Key": `sig=jwt;jwt="${agentToken?.substring(0, 20)}..."`
+      }, null)
+    );
     while (true) {
       try {
         const res = await (0, import_httpsig.fetch)(absolutePollUrl, {
@@ -3743,11 +3775,12 @@ ${renderJSON(body)}`;
         if (res.status === 200) {
           clearPendingAuthorize();
           const body = await res.json();
+          resolveStep(pollStep, "success", `GET ${pollPath} \u2192 200`);
           resolveStep(interactionStep, "success", "Interaction Completed");
           addLogStep(
             "Authorization Granted",
             "success",
-            formatResponse(200, null, body) + (body.auth_token ? formatToken("Auth Token", body.auth_token, decodeJWTPayloadBrowser(body.auth_token)) : "") + anotherRequestButton()
+            (body.auth_token ? formatAuthToken(body.auth_token) : "") + anotherRequestButton()
           );
           return;
         }
@@ -3755,6 +3788,7 @@ ${renderJSON(body)}`;
           clearPendingAuthorize();
           const body = await res.json().catch(() => null);
           const label = res.status === 403 ? "Interaction Denied" : "Interaction Timed Out";
+          resolveStep(pollStep, "error", `GET ${pollPath} \u2192 ${res.status}`);
           resolveStep(interactionStep, "error", label);
           addLogStep(
             `Authorization ${res.status === 403 ? "Denied" : "Timed Out"}`,

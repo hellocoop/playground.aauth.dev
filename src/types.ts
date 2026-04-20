@@ -56,7 +56,6 @@ export interface BootstrapTransaction {
   user_sub: string
   aauth_sub: string
   ephemeral_jwk: JsonWebKey
-  scope: string
   challenge: string
   type: 'register' | 'assert'
   created_at: number

@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, vi } from 'vitest'
 import { webcrypto } from 'node:crypto'
+import { fetch as sigFetch } from '@hellocoop/httpsig'
 import { decodeJWTPayload } from '../src/crypto'
 
 beforeAll(() => {
@@ -214,30 +215,50 @@ describe('POST /token', () => {
 // ── Authorize ──
 
 describe('POST /authorize', () => {
-  async function mintAgentToken(app: any, env: any, kv: InMemoryKV) {
+  // The authority that app.request() constructs for the Request URL. Signing
+  // must match so the server's httpsig verify sees the same value on the
+  // @authority component.
+  const TEST_URL = 'http://localhost/authorize'
+
+  // Mint an agent_token + keep the full ephemeral keypair (private + public)
+  // so we can sign RFC 9421 requests against /authorize.
+  async function mintAgentTokenWithKey(app: any, env: any, kv: InMemoryKV) {
     await kv.put('session:s1', JSON.stringify({ username: 'alice' }))
-    const ephemeral = await makeEphemeralPublicJwk()
+    const kp = await webcrypto.subtle.generateKey('Ed25519', true, ['sign', 'verify']) as CryptoKeyPair
+    const publicJwk = await webcrypto.subtle.exportKey('jwk', kp.publicKey)
+    const privateJwk = await webcrypto.subtle.exportKey('jwk', kp.privateKey)
     const res = await app.request('/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Session-Id': 's1' },
-      body: JSON.stringify({ ephemeral_jwk: ephemeral }),
+      body: JSON.stringify({ ephemeral_jwk: publicJwk }),
     }, env)
     const body = await res.json() as any
-    return { agentToken: body.agent_token, ephemeralJwk: ephemeral }
+    return { agentToken: body.agent_token, publicJwk, privateJwk }
   }
 
-  // Helper: build the Signature-Key header value for the sig=jwt scheme.
-  const sigKeyJwt = (t: string) => `sig=jwt;jwt="${t}"`
+  // Produce the header map a signed POST /authorize request carries.
+  async function signedHeaders(bodyJSON: string, agentToken: string, privateJwk: JsonWebKey): Promise<Record<string, string>> {
+    const dry = await sigFetch(TEST_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: bodyJSON,
+      signingKey: privateJwk,
+      signatureKey: { type: 'jwt', jwt: agentToken },
+      components: ['@method', '@authority', '@path', 'content-type', 'signature-key'],
+      dryRun: true,
+    }) as { headers: Headers }
+    const out: Record<string, string> = {}
+    dry.headers.forEach((v, k) => { out[k] = v })
+    return out
+  }
 
   it('rejects missing required fields', async () => {
     const app = await loadApp()
     const { env, kv } = await makeEnv()
-    const { agentToken } = await mintAgentToken(app, env, kv)
-    const res = await app.request('/authorize', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Signature-Key': sigKeyJwt(agentToken) },
-      body: JSON.stringify({ ps: 'https://ps.test' }),
-    }, env)
+    const { agentToken, privateJwk } = await mintAgentTokenWithKey(app, env, kv)
+    const body = JSON.stringify({ ps: 'https://ps.test' })
+    const headers = await signedHeaders(body, agentToken, privateJwk)
+    const res = await app.request('/authorize', { method: 'POST', headers, body }, env)
     expect(res.status).toBe(400)
   })
 
@@ -250,7 +271,7 @@ describe('POST /authorize', () => {
       body: JSON.stringify({ ps: 'https://ps.test', scope: 'openid' }),
     }, env)
     expect(res.status).toBe(401)
-    expect((await res.json() as any).error).toMatch(/Signature-Key/)
+    expect((await res.json() as any).error).toMatch(/signature verification failed/i)
   })
 
   it('rejects invalid agent_token', async () => {
@@ -258,21 +279,35 @@ describe('POST /authorize', () => {
     const { env } = await makeEnv()
     const res = await app.request('/authorize', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Signature-Key': sigKeyJwt('not.a.jwt') },
+      headers: { 'Content-Type': 'application/json', 'Signature-Key': 'sig=jwt;jwt="not.a.jwt"' },
       body: JSON.stringify({ ps: 'https://ps.test', scope: 'openid' }),
     }, env)
     expect(res.status).toBe(401)
   })
 
+  it('rejects when the httpsig is signed by a key other than the one in cnf.jwk', async () => {
+    const app = await loadApp()
+    const { env, kv } = await makeEnv()
+    const { agentToken } = await mintAgentTokenWithKey(app, env, kv)
+    // Sign with a DIFFERENT private key so the cnf.jwk → public key doesn't
+    // verify the signature. This is the key guarantee full httpsig gives us
+    // over the old JWT-only check.
+    const attackerKp = await webcrypto.subtle.generateKey('Ed25519', true, ['sign', 'verify']) as CryptoKeyPair
+    const attackerPriv = await webcrypto.subtle.exportKey('jwk', attackerKp.privateKey)
+    const body = JSON.stringify({ ps: 'https://ps.test', scope: 'openid' })
+    const headers = await signedHeaders(body, agentToken, attackerPriv)
+    const res = await app.request('/authorize', { method: 'POST', headers, body }, env)
+    expect(res.status).toBe(401)
+    expect((await res.json() as any).error).toMatch(/signature verification failed/i)
+  })
+
   it('rejects non-HTTPS PS URL', async () => {
     const app = await loadApp()
     const { env, kv } = await makeEnv()
-    const { agentToken } = await mintAgentToken(app, env, kv)
-    const res = await app.request('/authorize', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Signature-Key': sigKeyJwt(agentToken) },
-      body: JSON.stringify({ ps: 'http://ps.test', scope: 'openid' }),
-    }, env)
+    const { agentToken, privateJwk } = await mintAgentTokenWithKey(app, env, kv)
+    const body = JSON.stringify({ ps: 'http://ps.test', scope: 'openid' })
+    const headers = await signedHeaders(body, agentToken, privateJwk)
+    const res = await app.request('/authorize', { method: 'POST', headers, body }, env)
     expect(res.status).toBe(400)
     expect((await res.json() as any).error).toMatch(/HTTPS/)
   })
@@ -280,13 +315,11 @@ describe('POST /authorize', () => {
   it('returns 502 when PS metadata fetch fails', async () => {
     const app = await loadApp()
     const { env, kv } = await makeEnv()
-    const { agentToken } = await mintAgentToken(app, env, kv)
+    const { agentToken, privateJwk } = await mintAgentTokenWithKey(app, env, kv)
+    const body = JSON.stringify({ ps: 'https://ps.test', scope: 'openid' })
+    const headers = await signedHeaders(body, agentToken, privateJwk)
     vi.stubGlobal('fetch', vi.fn(async () => new Response('nope', { status: 404 })))
-    const res = await app.request('/authorize', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Signature-Key': sigKeyJwt(agentToken) },
-      body: JSON.stringify({ ps: 'https://ps.test', scope: 'openid' }),
-    }, env)
+    const res = await app.request('/authorize', { method: 'POST', headers, body }, env)
     expect(res.status).toBe(502)
     vi.unstubAllGlobals()
   })
@@ -294,16 +327,14 @@ describe('POST /authorize', () => {
   it('returns 502 when PS metadata is missing required fields', async () => {
     const app = await loadApp()
     const { env, kv } = await makeEnv()
-    const { agentToken } = await mintAgentToken(app, env, kv)
+    const { agentToken, privateJwk } = await mintAgentTokenWithKey(app, env, kv)
+    const body = JSON.stringify({ ps: 'https://ps.test', scope: 'openid' })
+    const headers = await signedHeaders(body, agentToken, privateJwk)
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ issuer: 'https://ps.test' }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     })))
-    const res = await app.request('/authorize', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Signature-Key': sigKeyJwt(agentToken) },
-      body: JSON.stringify({ ps: 'https://ps.test', scope: 'openid' }),
-    }, env)
+    const res = await app.request('/authorize', { method: 'POST', headers, body }, env)
     expect(res.status).toBe(502)
     expect((await res.json() as any).error).toMatch(/missing required/)
     vi.unstubAllGlobals()
@@ -312,7 +343,7 @@ describe('POST /authorize', () => {
   it('issues an aa-resource+jwt with correct claims when PS metadata is valid', async () => {
     const app = await loadApp()
     const { env, kv } = await makeEnv()
-    const { agentToken, ephemeralJwk } = await mintAgentToken(app, env, kv)
+    const { agentToken, publicJwk, privateJwk } = await mintAgentTokenWithKey(app, env, kv)
 
     const psMetadata = {
       issuer: 'https://ps.test',
@@ -327,22 +358,17 @@ describe('POST /authorize', () => {
       })
     }))
 
-    const res = await app.request('/authorize', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Signature-Key': sigKeyJwt(agentToken) },
-      body: JSON.stringify({
-        ps: 'https://ps.test',
-        scope: 'openid profile',
-      }),
-    }, env)
+    const body = JSON.stringify({ ps: 'https://ps.test', scope: 'openid profile' })
+    const headers = await signedHeaders(body, agentToken, privateJwk)
+    const res = await app.request('/authorize', { method: 'POST', headers, body }, env)
 
     expect(res.status).toBe(200)
-    const body = await res.json() as any
-    expect(body.ps_metadata).toEqual(psMetadata)
-    expect(body.ps_metadata_url).toBe('https://ps.test/.well-known/aauth-person.json')
-    expect(body.resource_token).toBeDefined()
+    const resBody = await res.json() as any
+    expect(resBody.ps_metadata).toEqual(psMetadata)
+    expect(resBody.ps_metadata_url).toBe('https://ps.test/.well-known/aauth-person.json')
+    expect(resBody.resource_token).toBeDefined()
 
-    const payload = decodeJWTPayload(body.resource_token)
+    const payload = decodeJWTPayload(resBody.resource_token)
     expect(payload.iss).toBe('https://playground.test')
     expect(payload.dwk).toBe('aauth-resource.json')
     expect(payload.aud).toBe('https://ps.test')
@@ -353,8 +379,43 @@ describe('POST /authorize', () => {
 
     // agent_jkt must be the RFC 7638 thumbprint of the ephemeral JWK
     const { computeJwkThumbprint } = await import('../src/crypto')
-    expect(payload.agent_jkt).toBe(await computeJwkThumbprint(ephemeralJwk))
+    expect(payload.agent_jkt).toBe(await computeJwkThumbprint(publicJwk))
 
+    vi.unstubAllGlobals()
+  })
+
+  it('rejects unknown scopes with 400 invalid_scope', async () => {
+    const app = await loadApp()
+    const { env, kv } = await makeEnv()
+    const { agentToken, privateJwk } = await mintAgentTokenWithKey(app, env, kv)
+    const body = JSON.stringify({ ps: 'https://ps.test', scope: 'openid notascope' })
+    const headers = await signedHeaders(body, agentToken, privateJwk)
+    const res = await app.request('/authorize', { method: 'POST', headers, body }, env)
+    expect(res.status).toBe(400)
+    const resBody = await res.json() as any
+    expect(resBody.error).toBe('invalid_scope')
+    expect(resBody.unknown).toEqual(['notascope'])
+  })
+
+  it('accepts multi-scope requests with all advertised values', async () => {
+    const app = await loadApp()
+    const { env, kv } = await makeEnv()
+    const { agentToken, privateJwk } = await mintAgentTokenWithKey(app, env, kv)
+    const psMetadata = {
+      issuer: 'https://ps.test',
+      token_endpoint: 'https://ps.test/token',
+      jwks_uri: 'https://ps.test/.well-known/jwks.json',
+    }
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(psMetadata), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    })))
+    const body = JSON.stringify({ ps: 'https://ps.test', scope: 'openid discord github' })
+    const headers = await signedHeaders(body, agentToken, privateJwk)
+    const res = await app.request('/authorize', { method: 'POST', headers, body }, env)
+    expect(res.status).toBe(200)
+    const payload = decodeJWTPayload(((await res.json()) as any).resource_token)
+    expect(payload.scope).toBe('openid discord github')
     vi.unstubAllGlobals()
   })
 })
