@@ -14,7 +14,6 @@ import {
   sanitizeCnfJwk,
 } from './crypto'
 import {
-  webauthnRoutes,
   deriveBindingKey,
   getBinding,
   putBinding,
@@ -75,16 +74,6 @@ app.get('/.well-known/aauth-resource.json', (c) => {
 app.get('/.well-known/jwks.json', async (c) => {
   const publicJwk = await getPublicJWK(c.env.SIGNING_KEY)
   return c.json({ keys: [publicJwk] })
-})
-
-// ── Session check (legacy /token path) ──
-
-app.get('/session', async (c) => {
-  const sessionId = c.req.header('X-Session-Id')
-  if (!sessionId) return c.json({ valid: false }, 401)
-  const sessionData = await c.env.WEBAUTHN_KV.get(`session:${sessionId}`, 'json') as any
-  if (!sessionData) return c.json({ valid: false }, 401)
-  return c.json({ valid: true, username: sessionData.username })
 })
 
 // ── Bootstrap: step 1 (challenge) ──
@@ -403,63 +392,6 @@ async function mintAgentAndResource(
   }
 }
 
-// ── @deprecated Agent token issuance via session (pre-bootstrap path) ──
-//
-// DEPRECATED: retained for the legacy WebAuthn-login flow. New clients
-// should use POST /bootstrap/challenge + /bootstrap/verify which issue
-// the agent_token based on a PS-vouched bootstrap_token.
-
-app.post('/token', async (c) => {
-  // Verify the user is authenticated via WebAuthn session
-  const sessionId = c.req.header('X-Session-Id')
-  if (!sessionId) {
-    return c.json({ error: 'missing session' }, 401)
-  }
-
-  const sessionData = await c.env.WEBAUTHN_KV.get(`session:${sessionId}`, 'json')
-  if (!sessionData) {
-    return c.json({ error: 'invalid session' }, 401)
-  }
-
-  // Parse the request — client sends its ephemeral public key
-  const body = await c.req.json<{ ephemeral_jwk: JsonWebKey; agent_local?: string }>()
-  if (!body.ephemeral_jwk) {
-    return c.json({ error: 'missing ephemeral_jwk' }, 400)
-  }
-
-  const origin = c.env.ORIGIN
-  const agentLocal = body.agent_local || 'playground'
-  const domain = new URL(origin).hostname
-  const sub = `aauth:${agentLocal}@${domain}`
-
-  const privateKey = await importSigningKey(c.env.SIGNING_KEY)
-  const publicJwk = await getPublicJWK(c.env.SIGNING_KEY)
-
-  const now = Math.floor(Date.now() / 1000)
-  const header = {
-    alg: 'EdDSA',
-    typ: 'aa-agent+jwt',
-    kid: publicJwk.kid,
-  }
-  const payload = {
-    iss: origin,
-    dwk: 'aauth-agent.json',
-    sub,
-    jti: generateJTI(),
-    cnf: { jwk: sanitizeCnfJwk(body.ephemeral_jwk) },
-    iat: now,
-    exp: now + 3600, // 1 hour
-  }
-
-  const jwt = await signJWT(header, payload, privateKey)
-
-  return c.json({
-    agent_token: jwt,
-    agent_id: sub,
-    expires_in: 3600,
-  })
-})
-
 // ── Authorization (resource token issuance) ──
 
 app.post('/authorize', async (c) => {
@@ -656,9 +588,5 @@ app.get('/api/demo', async (c) => {
     },
   })
 })
-
-// ── WebAuthn routes (legacy, backing /token) ──
-
-app.route('/', webauthnRoutes())
 
 export default app

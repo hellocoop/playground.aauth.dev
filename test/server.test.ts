@@ -112,106 +112,48 @@ describe('GET /.well-known/jwks.json', () => {
   })
 })
 
-// ── Session check ──
+// Mint an agent_token signed by the env's SIGNING_KEY without going
+// through any deleted legacy path. Used by /authorize tests to craft a
+// valid token whose cnf.jwk matches an ephemeral we control.
+async function mintAgentTokenForTest(env: any, opts?: { sub?: string; exp?: number }): Promise<{
+  agentToken: string
+  publicJwk: JsonWebKey
+  privateJwk: JsonWebKey
+}> {
+  const { computeJwkThumbprint } = await import('../src/crypto')
+  const kp = await webcrypto.subtle.generateKey('Ed25519', true, ['sign', 'verify']) as CryptoKeyPair
+  const publicJwk = await webcrypto.subtle.exportKey('jwk', kp.publicKey)
+  const privateJwk = await webcrypto.subtle.exportKey('jwk', kp.privateKey)
 
-describe('GET /session', () => {
-  it('returns 401 when no session header', async () => {
-    const app = await loadApp()
-    const { env } = await makeEnv()
-    const res = await app.request('/session', {}, env)
-    expect(res.status).toBe(401)
-    expect(await res.json()).toEqual({ valid: false })
-  })
+  const serverJwk = JSON.parse(env.SIGNING_KEY)
+  const serverKey = await webcrypto.subtle.importKey('jwk', serverJwk, { name: 'Ed25519' }, false, ['sign'])
+  const { d: _d, key_ops: _ops, ext: _ext, ...serverPub } = serverJwk
+  const serverKid = await computeJwkThumbprint(serverPub)
 
-  it('returns 401 when session not in KV', async () => {
-    const app = await loadApp()
-    const { env } = await makeEnv()
-    const res = await app.request('/session', {
-      headers: { 'X-Session-Id': 'missing' },
-    }, env)
-    expect(res.status).toBe(401)
-  })
+  const now = Math.floor(Date.now() / 1000)
+  const header = { alg: 'EdDSA', typ: 'aa-agent+jwt', kid: serverKid }
+  const payload = {
+    iss: env.ORIGIN,
+    dwk: 'aauth-agent.json',
+    sub: opts?.sub ?? 'aauth:test@playground.test',
+    jti: `jti-${Math.random().toString(36).slice(2)}`,
+    cnf: { jwk: { kty: publicJwk.kty, crv: publicJwk.crv, x: publicJwk.x } },
+    iat: now,
+    exp: opts?.exp ?? now + 3600,
+  }
+  const enc = new TextEncoder()
+  const b64 = (bytes: Uint8Array) => {
+    let s = ''
+    for (const b of bytes) s += String.fromCharCode(b)
+    return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+  }
+  const headerB64 = b64(enc.encode(JSON.stringify(header)))
+  const payloadB64 = b64(enc.encode(JSON.stringify(payload)))
+  const sig = await webcrypto.subtle.sign('Ed25519', serverKey, enc.encode(`${headerB64}.${payloadB64}`))
+  const agentToken = `${headerB64}.${payloadB64}.${b64(new Uint8Array(sig))}`
 
-  it('returns valid + username when session exists', async () => {
-    const app = await loadApp()
-    const { env, kv } = await makeEnv()
-    await kv.put('session:abc', JSON.stringify({ username: 'alice' }))
-    const res = await app.request('/session', {
-      headers: { 'X-Session-Id': 'abc' },
-    }, env)
-    expect(res.status).toBe(200)
-    expect(await res.json()).toEqual({ valid: true, username: 'alice' })
-  })
-})
-
-// ── Token issuance ──
-
-describe('POST /token', () => {
-  it('rejects without session', async () => {
-    const app = await loadApp()
-    const { env } = await makeEnv()
-    const res = await app.request('/token', { method: 'POST' }, env)
-    expect(res.status).toBe(401)
-  })
-
-  it('rejects without ephemeral_jwk', async () => {
-    const app = await loadApp()
-    const { env, kv } = await makeEnv()
-    await kv.put('session:s1', JSON.stringify({ username: 'alice' }))
-    const res = await app.request('/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Session-Id': 's1' },
-      body: JSON.stringify({}),
-    }, env)
-    expect(res.status).toBe(400)
-  })
-
-  it('issues an aa-agent+jwt with cnf.jwk and 1h expiry', async () => {
-    const app = await loadApp()
-    const { env, kv } = await makeEnv()
-    await kv.put('session:s1', JSON.stringify({ username: 'alice' }))
-    const ephemeral = await makeEphemeralPublicJwk()
-
-    const res = await app.request('/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Session-Id': 's1' },
-      body: JSON.stringify({ ephemeral_jwk: ephemeral }),
-    }, env)
-
-    expect(res.status).toBe(200)
-    const body = await res.json() as any
-    expect(body.expires_in).toBe(3600)
-    expect(body.agent_id).toBe('aauth:playground@playground.test')
-    expect(body.agent_token).toBeDefined()
-
-    const payload = decodeJWTPayload(body.agent_token)
-    expect(payload.iss).toBe('https://playground.test')
-    expect(payload.sub).toBe('aauth:playground@playground.test')
-    expect(payload.dwk).toBe('aauth-agent.json')
-    // cnf.jwk is sanitized to RFC 7638 required members (kty, crv, x for OKP).
-    // WebCrypto-inserted fields like key_ops, ext, alg are stripped.
-    expect((payload.cnf as any).jwk).toEqual({
-      kty: ephemeral.kty,
-      crv: ephemeral.crv,
-      x: ephemeral.x,
-    })
-    expect(payload.exp as number).toBe((payload.iat as number) + 3600)
-  })
-
-  it('honors agent_local override in subject', async () => {
-    const app = await loadApp()
-    const { env, kv } = await makeEnv()
-    await kv.put('session:s1', JSON.stringify({ username: 'alice' }))
-    const ephemeral = await makeEphemeralPublicJwk()
-    const res = await app.request('/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Session-Id': 's1' },
-      body: JSON.stringify({ ephemeral_jwk: ephemeral, agent_local: 'custom' }),
-    }, env)
-    const body = await res.json() as any
-    expect(body.agent_id).toBe('aauth:custom@playground.test')
-  })
-})
+  return { agentToken, publicJwk, privateJwk }
+}
 
 // ── Authorize ──
 
@@ -222,20 +164,11 @@ describe('POST /authorize', () => {
   const TEST_URL = 'http://localhost/authorize'
 
   // Mint an agent_token + keep the full ephemeral keypair (private + public)
-  // so we can sign RFC 9421 requests against /authorize.
-  async function mintAgentTokenWithKey(app: any, env: any, kv: InMemoryKV) {
-    await kv.put('session:s1', JSON.stringify({ username: 'alice' }))
-    const kp = await webcrypto.subtle.generateKey('Ed25519', true, ['sign', 'verify']) as CryptoKeyPair
-    const publicJwk = await webcrypto.subtle.exportKey('jwk', kp.publicKey)
-    const privateJwk = await webcrypto.subtle.exportKey('jwk', kp.privateKey)
-    const res = await app.request('/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Session-Id': 's1' },
-      body: JSON.stringify({ ephemeral_jwk: publicJwk }),
-    }, env)
-    const body = await res.json() as any
-    return { agentToken: body.agent_token, publicJwk, privateJwk }
-  }
+  // so we can sign RFC 9421 requests against /authorize. Bootstrap path is
+  // now the only way, but for unit tests we cut out WebAuthn + PS and sign
+  // the agent_token directly with the server's own SIGNING_KEY.
+  const mintAgentTokenWithKey = async (_app: any, env: any, _kv: InMemoryKV) =>
+    mintAgentTokenForTest(env, { sub: 'aauth:playground@playground.test' })
 
   // Produce the header map a signed POST /authorize request carries.
   async function signedHeaders(bodyJSON: string, agentToken: string, privateJwk: JsonWebKey): Promise<Record<string, string>> {
