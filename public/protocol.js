@@ -2827,8 +2827,8 @@
   var qrcode_default = qrcode;
   var stringToBytes = qrcode.stringToBytes;
 
-  // public/log-copy.json
-  var log_copy_default = {
+  // public/log-text.json
+  var log_text_default = {
     _about: "Single source of truth for every label + description rendered into the protocol log. Templates use {placeholder} for dynamic values substituted at runtime. All references to the agent server are spelled 'Agent Server' (not 'AS') to avoid conflation with 'Access Server' elsewhere in the AAuth protocol. Person Server is 'PS' in terse HTTP lines and 'Person Server' in prose.",
     sections: {
       bootstrap: "Bootstrap logs",
@@ -3031,7 +3031,7 @@
 
   // client/protocol.js
   function copy(path) {
-    return path.split(".").reduce((o, k) => o == null ? void 0 : o[k], log_copy_default);
+    return path.split(".").reduce((o, k) => o == null ? void 0 : o[k], log_text_default);
   }
   function fmt(template, vars = {}) {
     if (!template) return "";

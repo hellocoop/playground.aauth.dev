@@ -5,18 +5,18 @@
 
 import { fetch as sigFetch } from '@hellocoop/httpsig'
 import qrcode from 'qrcode-generator'
-import LOG_COPY from '../public/log-copy.json'
+import LOG_TEXT from '../public/log-text.json'
 
-// ── Log copy lookup ──
+// ── Log text lookup ──
 //
-// All user-facing labels + descriptions live in public/log-copy.json
+// All user-facing labels + descriptions live in public/log-text.json
 // (committed alongside this file, bundled in by esbuild). Call sites
 // reference entries via copy('section.key') and fmt() for templates
 // with {path} / {status} placeholders. Changing text means editing the
 // JSON, not searching this file.
 
 function copy(path) {
-  return path.split('.').reduce((o, k) => (o == null ? undefined : o[k]), LOG_COPY)
+  return path.split('.').reduce((o, k) => (o == null ? undefined : o[k]), LOG_TEXT)
 }
 
 function fmt(template, vars = {}) {
