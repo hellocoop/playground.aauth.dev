@@ -348,7 +348,10 @@ a { color: var(--accent); }
 }
 .server-list {
   list-style: none;
-  margin: 0.5rem 0 0;
+  /* Sits directly under the Person Server summary row — no top gap so
+     the list reads as a continuation of the heading rather than its
+     own block. */
+  margin: 0;
   padding: 0;
 }
 .server-list li {
