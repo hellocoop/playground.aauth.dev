@@ -91,19 +91,6 @@
           </ul>
         </details>
 
-        <!--
-          Hints UI hidden while we wire up the v3 flow — the inputs below
-          are still read by getHints() in protocol.js, so leaving the DOM
-          in place (with empty values) keeps the request body shape
-          unchanged. Uncomment the <details> to re-expose them.
-        -->
-        <div hidden>
-          <input type="text" id="login-hint">
-          <input type="text" id="domain-hint">
-          <input type="text" id="provider-hint">
-          <input type="text" id="tenant">
-        </div>
-
         <div class="authz-actions">
           <button id="bootstrap-btn" type="button">Bootstrap agent</button>
         </div>
@@ -184,6 +171,43 @@
           <svg class="section-chevron" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5"/></svg>
         </summary>
         <div class="scope-grid" id="resource-scope-grid"></div>
+      </details>
+
+      <!--
+        OIDC-style routing hints read at /aauth/token time. Each row has
+        an enable checkbox so a user can keep a value parked in the input
+        but omit it from the request — getHints() in protocol.js filters
+        on .hint-enable[data-hint-for=<kebab id>] and sends only checked
+        rows. Hints live here (not on Bootstrap) because in v3 they flow
+        through the authorize call, not bootstrap.
+      -->
+      <details class="section-group">
+        <summary class="section-heading">
+          <span>Hints</span>
+          <svg class="section-chevron" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5"/></svg>
+        </summary>
+        <div class="hints-grid">
+          <label class="hint-row">
+            <input type="checkbox" class="hint-enable" data-hint-for="login-hint">
+            <span class="hint-name">login_hint</span>
+            <input type="text" id="login-hint" placeholder="user@example.com">
+          </label>
+          <label class="hint-row">
+            <input type="checkbox" class="hint-enable" data-hint-for="domain-hint">
+            <span class="hint-name">domain_hint</span>
+            <input type="text" id="domain-hint" placeholder="example.com">
+          </label>
+          <label class="hint-row">
+            <input type="checkbox" class="hint-enable" data-hint-for="provider-hint">
+            <span class="hint-name">provider_hint</span>
+            <input type="text" id="provider-hint" placeholder="github">
+          </label>
+          <label class="hint-row">
+            <input type="checkbox" class="hint-enable" data-hint-for="tenant">
+            <span class="hint-name">tenant</span>
+            <input type="text" id="tenant" placeholder="ten_xxx_xxx">
+          </label>
+        </div>
       </details>
 
       <div class="authz-actions">
