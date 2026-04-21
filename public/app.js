@@ -303,17 +303,18 @@ window.aauthWebAuthn = {
 
 // ── UI updates ──
 
-// Post-bootstrap state: leave the Bootstrap section visible with its
-// protocol log collapsed (see collapseLog() at end of
-// completeAgentServerBootstrap), and reveal Agent Identity + Authorization
-// Request below it. Keeping the bootstrap section present means the
-// completed ceremony stays reviewable — expand the <details> to see
-// the full request/response trail again.
+// Post-bootstrap state: hide the pre-bootstrap controls (Person Server
+// picker, Bootstrap agent button, intro copy) so a reloaded page doesn't
+// show the user an option they're already past. The Bootstrap fieldset
+// itself stays visible because it now hosts the inline Agent Identity
+// block + protocol log from the completed ceremony. Reset lives on the
+// Authorization Request fieldset.
 //
 // Scrolls to the Agent Identity card on first reveal so a post-OAuth
 // redirect-back lands the viewport on the next actionable block instead
 // of wherever the Bootstrap section happened to be.
 function setAuthenticated(label) {
+  document.getElementById('bootstrap-controls')?.classList.add('hidden')
   const authSection = document.getElementById('auth-section')
   const authzSection = document.getElementById('authz-section')
   authSection?.classList.remove('hidden')
@@ -325,10 +326,11 @@ function setAuthenticated(label) {
   })
 }
 
-// Pre-bootstrap state: show only the Bootstrap section; hide Agent Identity
-// and Authorization Request.
+// Pre-bootstrap state: show only the Bootstrap section's pre-ceremony
+// controls; hide Agent Identity and Authorization Request.
 function setUnauthenticated() {
   document.getElementById('bootstrap-section')?.classList.remove('hidden')
+  document.getElementById('bootstrap-controls')?.classList.remove('hidden')
   document.getElementById('auth-section')?.classList.add('hidden')
   document.getElementById('authz-section')?.classList.add('hidden')
 }

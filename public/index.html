@@ -62,41 +62,51 @@
   <div class="section" id="bootstrap-section">
     <fieldset class="section-box">
       <legend>Bootstrap Agent</legend>
-      <p style="color: var(--muted); font-size: 0.9rem;">Bootstrap establishes the binding between you and this agent server.</p>
-      <!-- No scopes are requested here; choose scopes at authorization. -->
-      <details id="ps-details-bootstrap" class="section-group" open>
-        <summary class="section-heading">
-          <span>Person Server</span>
-          <svg class="section-chevron" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5"/></svg>
-          <span class="ps-current mono hidden" id="ps-current"></span>
-        </summary>
-        <ul class="server-list" id="ps-list">
-          <li>
-            <label class="radio-label"><input type="radio" name="ps" value="https://person.hello.coop"> <span>https://person.hello.coop</span></label>
-            <button class="copy-btn" type="button" data-copy="https://person.hello.coop" aria-label="Copy"></button>
-          </li>
-          <li class="custom-row">
-            <label class="radio-label"><input type="radio" name="ps" value="custom" id="ps-custom-radio"></label>
-            <input type="url" id="ps-custom" placeholder="https://ps.example" autocomplete="off">
-          </li>
-        </ul>
-      </details>
 
       <!--
-        Hints UI hidden while we wire up the v3 flow — the inputs below
-        are still read by getHints() in protocol.js, so leaving the DOM
-        in place (with empty values) keeps the request body shape
-        unchanged. Uncomment the <details> to re-expose them.
+        Pre-bootstrap UI — intro, Person Server picker, hidden hints
+        inputs, and the Bootstrap agent button. Once bootstrapped this
+        whole block is hidden by setAuthenticated so the fieldset
+        collapses to just the protocol log + Agent Identity rows below.
+        Reset lives on the Authorization Request fieldset's Reset button.
       -->
-      <div hidden>
-        <input type="text" id="login-hint">
-        <input type="text" id="domain-hint">
-        <input type="text" id="provider-hint">
-        <input type="text" id="tenant">
-      </div>
+      <div id="bootstrap-controls">
+        <p style="color: var(--muted); font-size: 0.9rem;">Bootstrap establishes the binding between you and this agent server.</p>
+        <!-- No scopes are requested here; choose scopes at authorization. -->
+        <details id="ps-details-bootstrap" class="section-group" open>
+          <summary class="section-heading">
+            <span>Person Server</span>
+            <svg class="section-chevron" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5"/></svg>
+            <span class="ps-current mono hidden" id="ps-current"></span>
+          </summary>
+          <ul class="server-list" id="ps-list">
+            <li>
+              <label class="radio-label"><input type="radio" name="ps" value="https://person.hello.coop"> <span>https://person.hello.coop</span></label>
+              <button class="copy-btn" type="button" data-copy="https://person.hello.coop" aria-label="Copy"></button>
+            </li>
+            <li class="custom-row">
+              <label class="radio-label"><input type="radio" name="ps" value="custom" id="ps-custom-radio"></label>
+              <input type="url" id="ps-custom" placeholder="https://ps.example" autocomplete="off">
+            </li>
+          </ul>
+        </details>
 
-      <div class="authz-actions">
-        <button id="bootstrap-btn" type="button">Bootstrap agent</button>
+        <!--
+          Hints UI hidden while we wire up the v3 flow — the inputs below
+          are still read by getHints() in protocol.js, so leaving the DOM
+          in place (with empty values) keeps the request body shape
+          unchanged. Uncomment the <details> to re-expose them.
+        -->
+        <div hidden>
+          <input type="text" id="login-hint">
+          <input type="text" id="domain-hint">
+          <input type="text" id="provider-hint">
+          <input type="text" id="tenant">
+        </div>
+
+        <div class="authz-actions">
+          <button id="bootstrap-btn" type="button">Bootstrap agent</button>
+        </div>
       </div>
 
       <!--
