@@ -904,6 +904,12 @@ async function startAuthorize() {
   clearLog()
   showLog()
 
+  // Hide the Start button while this request is in flight. Terminal
+  // outcomes render an "Another Authorization Request" button at the
+  // bottom of the log; clicking that re-shows Start (see the
+  // .js-scroll-authz delegated handler).
+  document.querySelector('#authz-section .authz-actions')?.classList.add('hidden')
+
   const hints = getHints()
 
   let agentTokenValid = false
@@ -1454,6 +1460,9 @@ document.addEventListener('click', (e) => {
   if (section) section.scrollIntoView({ behavior: 'smooth', block: 'start' })
   setActiveLog('authz-log')
   setTimeout(clearLog, 300)
+  // Re-show the Start button — startAuthorize hid it when this request
+  // kicked off.
+  document.querySelector('#authz-section .authz-actions')?.classList.remove('hidden')
 })
 
 // ── Close the loop: call the demo resource API with the minted auth_token ──

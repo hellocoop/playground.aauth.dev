@@ -3729,6 +3729,7 @@ ${renderJSON(body)}`;
     setActiveLog("authz-log");
     clearLog();
     showLog();
+    document.querySelector("#authz-section .authz-actions")?.classList.add("hidden");
     const hints = getHints();
     let agentTokenValid = false;
     const savedAgentToken = localStorage.getItem("aauth-agent-token");
@@ -4174,6 +4175,7 @@ ${renderJSON(body)}`;
     if (section) section.scrollIntoView({ behavior: "smooth", block: "start" });
     setActiveLog("authz-log");
     setTimeout(clearLog, 300);
+    document.querySelector("#authz-section .authz-actions")?.classList.remove("hidden");
   });
   async function callDemoResourceApi(authToken) {
     const endpoint = `${window.location.origin}/api/demo`;
