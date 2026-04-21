@@ -261,6 +261,12 @@ a { color: var(--accent); }
 
 /* Expand/collapse sections inside fieldsets (Person Server / Scopes / Hints) */
 .section-group { margin-bottom: 1rem; }
+/* Sibling spacing between the two Agent Token details rows — without
+   this they butt right against each other and the "Decoded Payload"
+   heading reads as if it's part of the Agent Token block above. */
+#token-section .section-group + .section-group {
+  margin-top: 0.75rem;
+}
 .section-group:last-child { margin-bottom: 0; }
 #token-section .section-group { margin-bottom: 0; }
 .token-wrap + .section-group { margin-top: 1rem; }

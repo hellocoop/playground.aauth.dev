@@ -3031,7 +3031,7 @@ ${renderJSON(body)}`;
   }
   async function runBootstrap(psUrl, hints) {
     const agentServerOrigin = window.location.origin;
-    addLogSection("Bootstrap");
+    addLogSection("Bootstrap logs");
     const { keyPair, publicJwk } = await window.aauthEphemeral.rotate();
     addLogStep(
       "Generate ephemeral key",
@@ -3389,7 +3389,7 @@ ${renderJSON(body)}`;
       );
       return null;
     }
-    addLogSection("Refresh");
+    addLogSection("Refresh logs");
     const { publicJwk: newPublicJwk } = await window.aauthEphemeral.stage();
     addLogStep(
       "Stage new ephemeral key",
@@ -3575,7 +3575,7 @@ ${renderJSON(body)}`;
       );
       return;
     }
-    addLogSection("Authorization");
+    addLogSection("Authorization logs");
     const authzEndpoint = `${window.location.origin}/authorize`;
     const authzBody = { ps: psUrl, scope };
     const signingJwk = await crypto.subtle.exportKey("jwk", keyPair.publicKey);
@@ -3797,7 +3797,7 @@ ${renderJSON(body)}`;
     _resumeInteractionPolling = true;
     setActiveLog("bootstrap-log");
     showLog();
-    addLogSection("Bootstrap (resumed)");
+    addLogSection("Bootstrap logs (resumed)");
     const publicJwk = await crypto.subtle.exportKey("jwk", kp.publicKey);
     const interactionStep = addLogStep(
       "Resuming bootstrap interaction",
@@ -3848,7 +3848,7 @@ ${renderJSON(body)}`;
     }
     setActiveLog("authz-log");
     showLog();
-    addLogSection("Authorization (resumed)");
+    addLogSection("Authorization logs (resumed)");
     const interactionStep = addLogStep(
       "Resuming authorize interaction",
       "pending",

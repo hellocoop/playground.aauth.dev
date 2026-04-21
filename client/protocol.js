@@ -284,7 +284,7 @@ function getHints() {
 async function runBootstrap(psUrl, hints) {
   const agentServerOrigin = window.location.origin
 
-  addLogSection('Bootstrap')
+  addLogSection('Bootstrap logs')
 
   // Step 0: rotate ephemeral. Fresh key each bootstrap so the PS's
   // cnf-bound bootstrap_token is scoped to this ceremony only.
@@ -680,7 +680,7 @@ async function runRefresh() {
     return null
   }
 
-  addLogSection('Refresh')
+  addLogSection('Refresh logs')
 
   const { publicJwk: newPublicJwk } = await window.aauthEphemeral.stage()
   addLogStep('Stage new ephemeral key', 'success',
@@ -896,7 +896,7 @@ async function runAuthorizationAgainstPS(psUrl, scope, hints) {
     return
   }
 
-  addLogSection('Authorization')
+  addLogSection('Authorization logs')
 
   // Mint a fresh resource_token via /authorize. This is an httpsig call
   // (RFC 9421) signed by the ephemeral key, with the agent_token carried
@@ -1143,7 +1143,7 @@ async function resumePendingInteraction() {
   // return, mint agent token) in one contiguous section log.
   setActiveLog('bootstrap-log')
   showLog()
-  addLogSection('Bootstrap (resumed)')
+  addLogSection('Bootstrap logs (resumed)')
   const publicJwk = await crypto.subtle.exportKey('jwk', kp.publicKey)
   const interactionStep = addLogStep('Resuming bootstrap interaction', 'pending',
     `<div class="token-display">Polling ${escapeHtml(saved.pollUrl)}</div>`
@@ -1199,7 +1199,7 @@ async function resumePendingAuthorize() {
   // Request fieldset where the original Continue click logged.
   setActiveLog('authz-log')
   showLog()
-  addLogSection('Authorization (resumed)')
+  addLogSection('Authorization logs (resumed)')
   const interactionStep = addLogStep('Resuming authorize interaction', 'pending',
     `<div class="token-display">Polling ${escapeHtml(saved.pollUrl)}</div>`
   )
