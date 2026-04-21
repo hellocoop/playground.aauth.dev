@@ -3700,7 +3700,7 @@ ${renderJSON(body)}`;
       if (!interaction.code) missing.push("code");
       return `<p style="color: var(--muted);">Interaction required but missing: ${escapeHtml(missing.join(", "))}.</p>`;
     }
-    const heading = kind === "authorize" ? "Continue at your Person Server to approve this request" : "Continue at your Person Server to approve this agent";
+    const heading = kind === "authorize" ? "Approve this request" : "Approve this agent";
     const callbackUrl = `${window.location.origin}/`;
     const sameDeviceUrl = `${interaction.url}?code=${encodeURIComponent(interaction.code)}&callback=${encodeURIComponent(callbackUrl)}`;
     const qrUrl = `${interaction.url}?code=${encodeURIComponent(interaction.code)}`;
@@ -3710,16 +3710,16 @@ ${renderJSON(body)}`;
     <div class="interaction-box">
       <p class="interaction-heading">${escapeHtml(heading)}</p>
       <div class="interaction-actions">
-        <a class="interaction-link" href="${escapeHtml(sameDeviceUrl)}">Open Person Server</a>
-        <div class="interaction-url-row">
-          <code class="interaction-url" id="${urlId}">${escapeHtml(sameDeviceUrl)}</code>
-          <button class="copy-btn" type="button" data-copy="${escapeHtml(sameDeviceUrl)}" aria-label="Copy"></button>
-        </div>
+        <a class="hello-btn hello-btn-black-on-dark" href="${escapeHtml(sameDeviceUrl)}">\u014D&nbsp;&nbsp;&nbsp;Continue with Hell\u014D</a>
       </div>
-      <div class="interaction-or"><span>OR on another device</span></div>
+      <div class="interaction-or"><span>OR scan QR code</span></div>
       <div class="qr-code" id="${qrId}"></div>
-      <p class="qr-caption">Scan, or enter this code at your Person Server:</p>
-      <div class="interaction-code">${escapeHtml(interaction.code)}</div>
+      <div class="interaction-url-row">
+        <button class="copy-btn copy-link-text" type="button" data-copy="${escapeHtml(qrUrl)}">
+          <span class="copy-link-text__default">Copy link</span>
+          <span class="copy-link-text__copied">Copied!</span>
+        </button>
+      </div>
       <div class="interaction-approved" aria-hidden="true">
         <svg class="interaction-check" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/></svg>
       </div>

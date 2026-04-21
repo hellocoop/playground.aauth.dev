@@ -465,6 +465,35 @@ a { color: var(--accent); }
 .token-label + .token-wrap { margin-top: 0; }
 .token-wrap + .token-label { margin-top: 0.75rem; }
 
+a.hello-btn { text-decoration: none; }
+
+/* Text-link "Copy link" under the QR. Reuses .copy-btn so the existing
+   delegated click handler (toggles .copied for 500ms) fires for free;
+   these rules override the icon-button defaults to render it as a plain
+   underlined text link with a label swap on copy. */
+.copy-link-text {
+  width: auto;
+  height: auto;
+  padding: 0;
+  opacity: 0.8;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 0.9rem;
+  text-decoration: underline;
+}
+.copy-link-text:hover,
+.copy-link-text:focus,
+.copy-link-text:focus-visible {
+  opacity: 0.8;
+  color: var(--muted);
+  background: transparent;
+  outline: none;
+  box-shadow: none;
+}
+.copy-link-text__copied { display: none; }
+.copy-link-text.copied .copy-link-text__default { display: none; }
+.copy-link-text.copied .copy-link-text__copied { display: inline; }
+
 /* Protocol log section dividers (Bootstrap / Refresh / Authorize).
    Visually separates the ceremonies so the reader can scan them. */
 .log-section-heading {
@@ -716,6 +745,9 @@ details.log-section + details.log-section {
   letter-spacing: 0.15em;
   margin: 0.5rem 0;
 }
+.interaction-heading {
+  margin: 0 0 1.75rem;
+}
 .interaction-actions {
   display: flex;
   flex-direction: column;
@@ -739,7 +771,7 @@ details.log-section + details.log-section {
   align-items: flex-start;
   gap: 0.25rem;
   justify-content: center;
-  margin-top: 0.75rem;
+  margin-top: -0.25rem;
   max-width: 100%;
 }
 .interaction-url {
@@ -768,7 +800,7 @@ details.log-section + details.log-section {
   background: var(--border);
 }
 .qr-code {
-  margin: 0.75rem auto 0.5rem;
+  margin: 0.5rem auto 0.75rem;
   display: inline-block;
   background: white;
   padding: 0.75rem;
@@ -780,5 +812,5 @@ details.log-section + details.log-section {
 .qr-caption {
   font-size: 0.75rem;
   color: var(--muted);
-  margin: 0;
+  margin: 0 0 0.25rem;
 }
