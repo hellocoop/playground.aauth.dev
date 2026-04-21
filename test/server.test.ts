@@ -322,14 +322,52 @@ describe('POST /authorize', () => {
     const app = await loadApp()
     const { env, kv } = await makeEnv()
     const { agentToken, privateJwk } = await mintAgentTokenWithKey(app, env, kv)
-    const body = JSON.stringify({ ps: 'https://ps.test', scope: 'playground.demo openid' })
+    // Typo'd resource scope — neither in SCOPE_DESCRIPTIONS nor in
+    // PS_IDENTITY_SCOPES — is the only thing that should still 400.
+    const body = JSON.stringify({
+      ps: 'https://ps.test',
+      scope: 'playground.demo playground.typo',
+    })
     const headers = await signedHeaders(body, agentToken, privateJwk)
     const res = await app.request('/authorize', { method: 'POST', headers, body }, env)
     expect(res.status).toBe(400)
     const resBody = await res.json() as any
     expect(resBody.error).toBe('invalid_scope')
-    // Identity scopes are no longer valid at /authorize — they live on the
-    // bootstrap/identity axis and arrive as claims on the auth_token.
-    expect(resBody.unknown).toEqual(['openid'])
+    expect(resBody.unknown).toEqual(['playground.typo'])
+  })
+
+  it('passes PS identity scopes through to resource_token.scope', async () => {
+    // Per aauth-claims-plan v3 §4.2 the resource server MUST pass
+    // identity scopes through unmodified — the PS classifies them at
+    // /aauth/token time.
+    const app = await loadApp()
+    const { env, kv } = await makeEnv()
+    const { agentToken, privateJwk } = await mintAgentTokenWithKey(app, env, kv)
+
+    const psMetadata = {
+      issuer: 'https://ps.test',
+      token_endpoint: 'https://ps.test/token',
+      jwks_uri: 'https://ps.test/.well-known/jwks.json',
+    }
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      return new Response(JSON.stringify(psMetadata), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }))
+
+    const body = JSON.stringify({
+      ps: 'https://ps.test',
+      scope: 'openid profile playground.demo',
+    })
+    const headers = await signedHeaders(body, agentToken, privateJwk)
+    const res = await app.request('/authorize', { method: 'POST', headers, body }, env)
+    expect(res.status).toBe(200)
+    const resBody = await res.json() as any
+    // scope on the resource_token carries the agent's request verbatim.
+    expect(resBody.resource_token_decoded.scope).toBe(
+      'openid profile playground.demo',
+    )
+    vi.unstubAllGlobals()
   })
 })

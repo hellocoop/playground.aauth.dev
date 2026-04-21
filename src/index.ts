@@ -32,13 +32,51 @@ app.use('*', cors())
 // ── Resource scope metadata ──
 //
 // Resource scopes describe operations an agent can perform at this resource
-// (the playground, wearing its resource hat). Identity scopes (openid,
-// profile, email, ...) live on a different axis — those are requested at
-// bootstrap and arrive back as named claims on the auth_token, not on the
-// scope field. Only the values in this map are valid at /authorize.
+// (the playground, wearing its resource hat). Only these values are defined
+// by the resource itself.
 const SCOPE_DESCRIPTIONS: Record<string, string> = {
   'playground.demo': 'Run the playground demo endpoint',
 }
+
+// Identity scopes defined by the Person Server (aauth-claims-plan v3
+// §4.2 AAUTH_SUPPORTED_SCOPES + OIDC `profile` composite). These flow
+// through resource_token.scope unchanged — the PS classifies them at
+// /aauth/token time and releases claim values onto the auth_token.
+//
+// Why accept them here: v3 carries identity + resource scopes together
+// in a single resource_token.scope string (the previous split across
+// bootstrap/authorize is gone). The resource still validates its own
+// scopes against SCOPE_DESCRIPTIONS, but must pass identity scopes
+// through rather than 400'ing on them.
+const PS_IDENTITY_SCOPES: Set<string> = new Set([
+  'openid',
+  'profile',
+  'name',
+  'nickname',
+  'given_name',
+  'family_name',
+  'preferred_username',
+  'picture',
+  'email',
+  'phone',
+  'ethereum',
+  'discord',
+  'twitter',
+  'github',
+  'gitlab',
+  'bio',
+  'banner',
+  'recovery',
+  'mastodon',
+  'instagram',
+  'verified_name',
+  'existing_name',
+  'existing_username',
+  'tenant_sub',
+  'org',
+  'groups',
+  'roles',
+])
 
 // ── Well-known endpoints ──
 
@@ -486,10 +524,14 @@ app.post('/authorize', async (c) => {
     return c.json({ error: 'missing required fields: ps, scope' }, 400)
   }
 
-  // Per §12.2, resource_token.scope MUST only contain values the resource
-  // advertises in its scope_descriptions. Reject unknowns before we sign.
+  // resource_token.scope is the combined identity + resource string the
+  // PS will classify at /aauth/token. The resource validates its own
+  // scopes (SCOPE_DESCRIPTIONS) and lets PS-known identity scopes pass
+  // through; anything else is a typo / spoofing attempt.
   const requestedScopes = body.scope.trim().split(/\s+/).filter(Boolean)
-  const unknown = requestedScopes.filter((s) => !(s in SCOPE_DESCRIPTIONS))
+  const unknown = requestedScopes.filter(
+    (s) => !(s in SCOPE_DESCRIPTIONS) && !PS_IDENTITY_SCOPES.has(s),
+  )
   if (unknown.length > 0) {
     return c.json({ error: 'invalid_scope', unknown }, 400)
   }
