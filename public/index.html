@@ -147,10 +147,7 @@
             </div>
           </details>
         </div>
-        <div class="bootstrap-complete-banner" aria-live="polite">
-          <span class="bootstrap-complete-check" aria-hidden="true">✓</span>
-          <span>Bootstrap complete — agent is bound to this user and ready to request scopes.</span>
-        </div>
+        <p class="bootstrap-complete" aria-live="polite"><span class="step-status step-status-success">&#x2713;</span> Bootstrap complete — agent is bound to this user and ready to request scopes.</p>
       </div>
     </fieldset>
   </div>
@@ -158,6 +155,7 @@
   <div class="section hidden" id="authz-section">
     <fieldset class="section-box">
       <legend>Authorization Request</legend>
+      <button id="reset-btn" type="button" class="btn-outline section-reset" title="Clear saved PS, scopes, binding, and tokens">Reset</button>
 
       <details class="section-group" open>
         <summary class="section-heading">
@@ -213,8 +211,7 @@
       </details>
 
       <div class="authz-actions">
-        <button id="authz-btn" type="button">Continue</button>
-        <button id="reset-btn" type="button" class="btn-outline" title="Clear saved PS, scopes, binding, and tokens">Reset</button>
+        <button id="authz-btn" type="button">Start</button>
       </div>
 
       <!-- Authorization's network calls log inline here — separate

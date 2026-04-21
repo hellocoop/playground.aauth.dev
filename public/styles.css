@@ -467,25 +467,12 @@ a { color: var(--accent); }
 
 a.hello-btn { text-decoration: none; }
 
-/* Filled-green confirmation banner shown at the bottom of the Bootstrap
-   Agent fieldset once the agent_token has been minted. Full-fill (not
-   just border-left) to clearly mark the end-state of the ceremony. */
-.bootstrap-complete-banner {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  margin-top: 1.25rem;
-  padding: 0.75rem 1rem;
-  background: var(--success);
-  color: #0b2e1a;
-  border-radius: 4px;
+/* "✓ Bootstrap complete …" row at the bottom of the Bootstrap Agent
+   fieldset. Styled to match the "✓ Bound as …" row above it so the end-
+   state reads as a plain status line, not a celebratory banner. */
+.bootstrap-complete {
+  margin-top: 1rem;
   font-size: 0.9rem;
-  font-weight: 500;
-}
-.bootstrap-complete-check {
-  font-weight: 700;
-  font-size: 1rem;
-  line-height: 1;
 }
 
 /* Text-link "Copy link" under the QR. Reuses .copy-btn so the existing
@@ -585,14 +572,25 @@ details.log-section + details.log-section {
   border-top: 1px solid var(--border);
 }
 
-/* Continue + Reset button row under the Authorization Request form. */
+/* Start button under the Authorization Request form. Full-width so the
+   primary action is unambiguous; Reset moved up to the fieldset's top-right
+   corner (see .section-reset). */
 .authz-actions {
-  display: flex;
-  gap: 0.75rem;
-  align-items: center;
   margin-top: 0.5rem;
 }
-.authz-actions #authz-btn { flex: 1; }
+.authz-actions #authz-btn { width: 100%; }
+
+/* Reset button pinned to the top-right of the Authorization Request
+   fieldset. Visually sits across from the <legend> label; small and
+   outlined so it reads as a secondary escape hatch, not a CTA. */
+.section-reset {
+  position: absolute;
+  top: -0.6rem;
+  right: 0.75rem;
+  padding: 0.15rem 0.6rem;
+  font-size: 0.75rem;
+  background: var(--bg);
+}
 
 /* Section box (fieldset with inset legend) */
 .section-box {

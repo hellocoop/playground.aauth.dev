@@ -1,0 +1,209 @@
+{
+  "_about": "Single source of truth for every label + description rendered into the protocol log. Templates use {placeholder} for dynamic values substituted at runtime. All references to the agent server are spelled 'Agent Server' (not 'AS') to avoid conflation with 'Access Server' elsewhere in the AAuth protocol. Person Server is 'PS' in terse HTTP lines and 'Person Server' in prose.",
+
+  "sections": {
+    "bootstrap": "Bootstrap logs",
+    "bootstrap_resumed": "Bootstrap logs (resumed)",
+    "refresh": "Refresh logs",
+    "authorize": "Authorization logs",
+    "authorize_resumed": "Authorization logs (resumed)"
+  },
+
+  "bootstrap": {
+    "generate_ephemeral": {
+      "label": "Agent: generate ephemeral key",
+      "description": "Agent generates an Ed25519 keypair — private stays local, public binds the issued token to this agent so only the private-key holder can use it."
+    },
+    "ps_discovery_request": {
+      "label_template": "Agent → PS: GET {path}",
+      "label_resolved_template": "Agent → PS: GET {path} → {status}",
+      "label_error_network_template": "Agent → PS: GET {path} (network error)",
+      "description": "Discovers the PS's bootstrap_endpoint and interaction_endpoint — needed before the agent can call anything else on the PS."
+    },
+    "ps_bootstrap_request": {
+      "label_template": "Agent → PS: POST {path}",
+      "label_resolved_template": "Agent → PS: POST {path} → {status}",
+      "label_error_network_template": "Agent → PS: POST {path} (network error)",
+      "label_error_unexpected_template": "Agent → PS: POST {path} → {status} (unexpected)",
+      "description": "Agent starts the ceremony at the PS; 202 returns a pending URL to poll plus a consent URL to show the user."
+    },
+    "ps_pending_longpoll": {
+      "label_template": "Agent → PS: GET {path} (long-poll)",
+      "label_resolved_template": "Agent → PS: GET {path} → {status}",
+      "label_resolved_no_token_template": "Agent → PS: GET {path} → 200 (no bootstrap_token)",
+      "description": "Agent waits for consent; Prefer: wait=30 holds the connection open so the PS can push state immediately instead of tight polling."
+    },
+    "ps_consent_prompt": {
+      "label": "User at PS: consent prompt",
+      "description": "User approves (or denies) at the PS via redirect or QR — their decision resolves the long-poll above.",
+      "label_resolved_success": "User Consent Completed",
+      "label_resolved_denied": "Consent Denied",
+      "label_resolved_timed_out": "Consent Timed Out",
+      "label_resolved_no_token": "Pending returned no bootstrap_token"
+    },
+    "ps_bootstrap_token_received": {
+      "label": "PS response: bootstrap_token received",
+      "description": "Signed JWT cnf-bound to the agent's ephemeral; single-use ticket the agent hands to its own Agent Server next."
+    },
+    "ps_pending_bad_response": {
+      "label": "Bad /pending response",
+      "description": ""
+    },
+    "ps_user_denied": {
+      "label": "User denied consent",
+      "description": ""
+    },
+    "ps_interaction_timed_out": {
+      "label": "Interaction timed out",
+      "description": ""
+    },
+    "agent_server_challenge_request": {
+      "label_template": "Agent → Agent Server: POST {path}",
+      "label_resolved_template": "Agent → Agent Server: POST {path} → {status}",
+      "label_error_network_template": "Agent → Agent Server: POST {path} (network error)",
+      "description": "Agent Server verifies the PS signature on bootstrap_token and issues a WebAuthn challenge — gates who can mint agent_token."
+    },
+    "webauthn_ceremony_failed": {
+      "label": "WebAuthn ceremony failed",
+      "description": ""
+    },
+    "webauthn_ceremony_success": {
+      "label": "User at Browser: WebAuthn ceremony",
+      "description": "User taps the passkey / platform authenticator to sign the Agent Server's challenge — proves a human is present and the correct credential is on this device."
+    },
+    "agent_server_verify_request": {
+      "label_template": "Agent → Agent Server: POST {path}",
+      "label_resolved_template": "Agent → Agent Server: POST {path} → {status}",
+      "label_error_network_template": "Agent → Agent Server: POST {path} (network error)",
+      "description": "Agent Server verifies the WebAuthn response, records the (PS, user) binding so future refreshes skip the PS round-trip."
+    }
+  },
+
+  "bootstrap_resumed": {
+    "ps_consent_prompt": {
+      "label": "User at PS: consent prompt (resumed)",
+      "description": "Page was reloaded (or returned from the PS redirect) mid-ceremony — resuming the long-poll against the saved pending URL."
+    }
+  },
+
+  "refresh": {
+    "cannot_refresh": {
+      "label": "Cannot refresh",
+      "description": "No ephemeral key + agent_token pair present locally. Full bootstrap required."
+    },
+    "stage_new_ephemeral": {
+      "label": "Agent: stage new ephemeral key",
+      "description": "Agent generates a fresh keypair but holds it staged; /refresh is still signed with the old key (matches current agent_token.cnf). The new key is committed only after verify succeeds so a failed refresh leaves the old agent_token usable."
+    },
+    "agent_server_refresh_challenge_request": {
+      "label_template": "Agent → Agent Server: POST {path}",
+      "label_resolved_template": "Agent → Agent Server: POST {path} → {status}",
+      "label_error_network_template": "Agent → Agent Server: POST {path} (network error)",
+      "description": "Agent asks its own Agent Server for a WebAuthn challenge against the stored binding; signed with the old ephemeral so the Agent Server can prove the caller is the current cnf-holder."
+    },
+    "webauthn_assertion_failed": {
+      "label": "WebAuthn assertion failed",
+      "description": ""
+    },
+    "webauthn_ceremony_success": {
+      "label": "User at Browser: WebAuthn ceremony",
+      "description": "User taps the passkey to sign the Agent Server's refresh challenge — proves the same human is still present on this device."
+    },
+    "agent_server_refresh_verify_request": {
+      "label_template": "Agent → Agent Server: POST {path}",
+      "label_resolved_template": "Agent → Agent Server: POST {path} → {status}",
+      "label_error_network_template": "Agent → Agent Server: POST {path} (network error)",
+      "description": "Agent returns the signed WebAuthn assertion; Agent Server verifies it, promotes the staged key to cnf-bound for the new agent_token, and mints fresh tokens."
+    }
+  },
+
+  "authorize": {
+    "missing_context": {
+      "label": "Missing agent_token or ephemeral key",
+      "description": "Bootstrap must complete before authorization."
+    },
+    "agent_server_authorize_request": {
+      "label_template": "Agent → Agent Server: POST {path}",
+      "label_resolved_template": "Agent → Agent Server: POST {path} → {status}",
+      "label_error_network_template": "Agent → Agent Server: POST {path} (network error)",
+      "description": "Agent asks its own Agent Server for a resource_token scoped to this PS + resource; signed with the agent's ephemeral and carrying the agent_token as authentication."
+    },
+    "ps_token_request": {
+      "label_template": "Agent → PS: POST {path}",
+      "label_resolved_template": "Agent → PS: POST {path} → {status}",
+      "label_error_network_template": "Agent → PS: POST {path} (network error)",
+      "description": "Agent trades the resource_token with the PS for a scoped auth_token. 200 = scopes already consented; 202 = user consent needed for a scope upgrade."
+    },
+    "ps_pending_longpoll": {
+      "label_template": "Agent → PS: GET {path} (long-poll)",
+      "label_resolved_template": "Agent → PS: GET {path} → {status}",
+      "description": "Agent long-polls the PS pending URL for the auth_token. Prefer: wait=30 asks the PS to hold the request for up to 30s; on 202 the client loops immediately."
+    },
+    "ps_consent_prompt": {
+      "label": "User at PS: consent prompt",
+      "description": "User approves the scope upgrade at the PS (redirect or QR) — the long-poll above resolves once they decide.",
+      "label_resolved_success": "Interaction Completed",
+      "label_resolved_denied": "Interaction Denied",
+      "label_resolved_timed_out": "Interaction Timed Out"
+    },
+    "authorization_granted": {
+      "label": "Authorization Granted",
+      "description": ""
+    },
+    "authorization_denied": {
+      "label": "Authorization Denied",
+      "description": ""
+    },
+    "authorization_timed_out": {
+      "label": "Authorization Timed Out",
+      "description": ""
+    }
+  },
+
+  "authorize_resumed": {
+    "ps_consent_prompt": {
+      "label": "User at PS: consent prompt (resumed)",
+      "description": "Resuming the authorize long-poll after a return from the PS — waits for the user's scope-consent decision to resolve."
+    }
+  },
+
+  "demo_api": {
+    "missing_key": {
+      "label": "Demo API Call Failed",
+      "description": "Missing ephemeral key — cannot sign /api/demo."
+    },
+    "request": {
+      "label_template": "GET {path}",
+      "label_resolved_template": "GET {path} → {status}",
+      "label_error_network_template": "GET {path} (network error)",
+      "description": "Calling the resource's demo endpoint. The request is signed per RFC 9421 with sig=jwt;jwt=\"<auth_token>\": the server verifies the HTTP signature against auth_token.cnf.jwk (our ephemeral), then separately verifies the auth_token itself against the PS JWKS and checks that scope covers the required resource scope."
+    },
+    "success": {
+      "label": "Demo API Called",
+      "description": ""
+    },
+    "failure": {
+      "label": "Demo API Call Failed",
+      "description": ""
+    }
+  },
+
+  "errors": {
+    "unhandled": {
+      "label": "Unhandled error",
+      "description": ""
+    }
+  },
+
+  "ui": {
+    "another_request_button": "Another Authorization Request",
+    "approve_at_ps": {
+      "bootstrap_heading": "Approve this agent",
+      "authorize_heading": "Approve this authorization request",
+      "continue_label": "Continue at your Person Server to approve this agent",
+      "or_another_device": "OR scan QR code",
+      "copy_link_default": "Copy link",
+      "copy_link_copied": "Copied!"
+    }
+  }
+}
