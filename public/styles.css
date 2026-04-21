@@ -596,9 +596,16 @@ details.log-section + details.log-section {
   position: absolute;
   top: -0.6rem;
   right: 0.75rem;
+  margin-top: -10px;
   padding: 0.15rem 0.6rem;
   font-size: 0.75rem;
-  background: var(--bg);
+  background: #303030;
+  color: #ffffff;
+  border-color: #303030;
+}
+.section-reset:hover {
+  background: #303030;
+  color: #ffffff;
 }
 
 /* Section box (fieldset with inset legend) */
@@ -662,8 +669,6 @@ details.log-section + details.log-section {
 }
 .scope-column-heading {
   font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
   color: var(--muted);
   font-family: 'IBM Plex Mono', 'SF Mono', 'Fira Code', monospace;
   margin: 0 0 0.4rem 0;
