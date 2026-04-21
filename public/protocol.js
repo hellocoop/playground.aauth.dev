@@ -2907,7 +2907,7 @@
     section.open = true;
     const summary = document.createElement("summary");
     summary.className = "log-section-heading";
-    summary.textContent = title;
+    summary.innerHTML = `<span class="log-section-title">${escapeHtml(title)}</span>${CHEVRON_SVG}`;
     section.appendChild(summary);
     log.appendChild(section);
   }
@@ -2929,6 +2929,7 @@
     heading.innerHTML = `<span class="step-label">${statusIndicatorHtml(status)}<span class="step-text">${label}</span></span>${expandable ? CHEVRON_SVG : ""}`;
     step.appendChild(heading);
     const body = document.createElement("div");
+    body.className = "log-step-body";
     body.style.marginTop = "1rem";
     body.innerHTML = content;
     step.appendChild(body);
@@ -2937,6 +2938,12 @@
       step.scrollIntoView({ behavior: "smooth", block: "start" });
     });
     return step;
+  }
+  function appendToStep(step, html) {
+    if (!step) return;
+    const body = step.querySelector(":scope > .log-step-body");
+    if (!body) return;
+    body.insertAdjacentHTML("beforeend", html);
   }
   function resolveStep(step, status, label) {
     if (!step) return;
@@ -2957,7 +2964,7 @@
     <div class="token-display${extraClass ? " " + extraClass : ""}" id="${id}">${innerHtml}</div>
   </div>`;
   }
-  function formatRequest(method, url, headers, body) {
+  function formatRequest(method, url, headers, body, opts = {}) {
     let inner = `${escapeHtml(method)} ${escapeHtml(url)}
 `;
     if (headers) {
@@ -2968,11 +2975,11 @@
     }
     if (body) {
       inner += `
-${renderJSON(body)}`;
+${renderJSONWithColoredJWTs(body, opts.jwtFields)}`;
     }
     return tokenWrap(inner);
   }
-  function formatResponse(status, headers, body) {
+  function formatResponse(status, headers, body, opts = {}) {
     let inner = `HTTP ${status}
 `;
     if (headers) {
@@ -2983,9 +2990,12 @@ ${renderJSON(body)}`;
     }
     if (body) {
       inner += `
-${renderJSON(body)}`;
+${renderJSONWithColoredJWTs(body, opts.jwtFields)}`;
     }
     return tokenWrap(inner);
+  }
+  function txLabel(text) {
+    return `<div class="tx-label">${escapeHtml(text)}</div>`;
   }
   function formatToken(label, token, decoded) {
     return `
@@ -2996,15 +3006,6 @@ ${renderJSON(body)}`;
     <details class="section-group" open>
       <summary class="section-heading"><span>Decoded</span>${CHEVRON_SVG}</summary>
       ${tokenWrap(renderJSON(decoded))}
-    </details>
-  `;
-  }
-  function formatAuthToken(token) {
-    return `
-    ${tokenWrap(renderEncodedJWT(token), "encoded")}
-    <details class="section-group" open>
-      <summary class="section-heading"><span>Decoded</span>${CHEVRON_SVG}</summary>
-      ${tokenWrap(renderJSON(decodeJWTPayloadBrowser(token)))}
     </details>
   `;
   }
@@ -3629,12 +3630,12 @@ ${renderJSON(body)}`;
     const psReqStep = addLogStep(
       `POST ${new URL(tokenEndpoint).pathname}`,
       "pending",
-      formatRequest("POST", tokenEndpoint, {
+      txLabel("Request") + formatRequest("POST", tokenEndpoint, {
         "Content-Type": "application/json",
         "Signature-Input": 'sig=("@method" "@authority" "@path" "signature-key");created=...',
         "Signature": "sig=:...:",
         "Signature-Key": `sig=jwt;jwt="${agentToken?.substring(0, 20)}..."`
-      }, psRequestBody)
+      }, psRequestBody, { jwtFields: ["resource_token"] })
     );
     try {
       const signingJwk2 = await crypto.subtle.exportKey("jwk", keyPair.publicKey);
@@ -3660,12 +3661,12 @@ ${renderJSON(body)}`;
       }
       const psPath = new URL(tokenEndpoint).pathname;
       resolveStep(psReqStep, psRes.ok ? "success" : "error", `POST ${psPath} \u2192 ${psRes.status}`);
+      appendToStep(
+        psReqStep,
+        txLabel("Response") + formatResponse(psRes.status, responseHeaders, psBody, { jwtFields: ["auth_token"] })
+      );
       if (psRes.status === 200 && psBody?.auth_token) {
-        addLogStep(
-          "Authorization Granted",
-          "success",
-          formatAuthToken(psBody.auth_token) + anotherRequestButton()
-        );
+        appendToStep(psReqStep, anotherRequestButton());
       } else if (psRes.status === 202) {
         const reqHeader = psRes.headers.get("aauth-requirement") || "";
         const fromHeader = parseInteractionHeader(reqHeader);
@@ -3675,6 +3676,21 @@ ${renderJSON(body)}`;
           url: fromHeader.url || psMetadata.interaction_endpoint
         };
         const pollUrl = psRes.headers.get("location") || psBody?.location;
+        let pollStep = null;
+        if (pollUrl) {
+          const absolutePollUrl = new URL(pollUrl, tokenEndpoint).href;
+          const pollPath = new URL(absolutePollUrl).pathname;
+          pollStep = addLogStep(
+            `GET ${pollPath} (long-poll)`,
+            "pending",
+            `<p>Long-polling the PS pending URL for the auth_token. <code>Prefer: wait=30</code> asks the PS to hold the request for up to 30s; on 202 the client loops immediately.</p>` + txLabel("Request") + formatRequest("GET", absolutePollUrl, {
+              "Prefer": "wait=30",
+              "Signature-Input": 'sig=("@method" "@authority" "@path" "signature-key");created=...',
+              "Signature": "sig=:...:",
+              "Signature-Key": `sig=jwt;jwt="${agentToken?.substring(0, 20)}..."`
+            }, null)
+          );
+        }
         const interactionStep = addLogStep(
           "Interaction Required",
           "pending",
@@ -3687,7 +3703,7 @@ ${renderJSON(body)}`;
             psUrl,
             scope
           });
-          startAuthTokenPolling(pollUrl, tokenEndpoint, interactionStep);
+          startAuthTokenPolling(pollUrl, tokenEndpoint, interactionStep, pollStep);
         }
       } else {
         addLogStep(
@@ -3879,23 +3895,25 @@ ${renderJSON(body)}`;
   } else {
     window.addEventListener("load", fireFallbackResume, { once: true });
   }
-  async function startAuthTokenPolling(pollUrl, baseUrl, interactionStep) {
+  async function startAuthTokenPolling(pollUrl, baseUrl, interactionStep, pollStep) {
     const absolutePollUrl = new URL(pollUrl, baseUrl).href;
     const keyPair = window.aauthEphemeral.get();
     const agentToken = localStorage.getItem("aauth-agent-token");
     if (!keyPair || !agentToken) return;
     const signingJwk = await crypto.subtle.exportKey("jwk", keyPair.publicKey);
     const pollPath = new URL(absolutePollUrl).pathname;
-    const pollStep = addLogStep(
-      `GET ${pollPath} (long-poll)`,
-      "pending",
-      `<p>Long-polling the PS pending URL for the auth_token. <code>Prefer: wait=30</code> asks the PS to hold the request for up to 30s; on 202 the client loops immediately.</p>` + formatRequest("GET", absolutePollUrl, {
-        "Prefer": "wait=30",
-        "Signature-Input": 'sig=("@method" "@authority" "@path" "signature-key");created=...',
-        "Signature": "sig=:...:",
-        "Signature-Key": `sig=jwt;jwt="${agentToken?.substring(0, 20)}..."`
-      }, null)
-    );
+    if (!pollStep) {
+      pollStep = addLogStep(
+        `GET ${pollPath} (long-poll)`,
+        "pending",
+        `<p>Long-polling the PS pending URL for the auth_token. <code>Prefer: wait=30</code> asks the PS to hold the request for up to 30s; on 202 the client loops immediately.</p>` + txLabel("Request") + formatRequest("GET", absolutePollUrl, {
+          "Prefer": "wait=30",
+          "Signature-Input": 'sig=("@method" "@authority" "@path" "signature-key");created=...',
+          "Signature": "sig=:...:",
+          "Signature-Key": `sig=jwt;jwt="${agentToken?.substring(0, 20)}..."`
+        }, null)
+      );
+    }
     while (true) {
       try {
         const res = await (0, import_httpsig.fetch)(absolutePollUrl, {
@@ -3911,10 +3929,9 @@ ${renderJSON(body)}`;
           const body = await res.json();
           resolveStep(pollStep, "success", `GET ${pollPath} \u2192 200`);
           resolveStep(interactionStep, "success", "Interaction Completed");
-          addLogStep(
-            "Authorization Granted",
-            "success",
-            (body.auth_token ? formatAuthToken(body.auth_token) : "") + anotherRequestButton()
+          appendToStep(
+            pollStep,
+            txLabel("Response") + formatResponse(200, null, body, { jwtFields: ["auth_token"] }) + anotherRequestButton()
           );
           return;
         }
@@ -3924,10 +3941,9 @@ ${renderJSON(body)}`;
           const label = res.status === 403 ? "Interaction Denied" : "Interaction Timed Out";
           resolveStep(pollStep, "error", `GET ${pollPath} \u2192 ${res.status}`);
           resolveStep(interactionStep, "error", label);
-          addLogStep(
-            `Authorization ${res.status === 403 ? "Denied" : "Timed Out"}`,
-            "error",
-            formatResponse(res.status, null, body) + anotherRequestButton()
+          appendToStep(
+            pollStep,
+            txLabel("Response") + formatResponse(res.status, null, body) + anotherRequestButton()
           );
           return;
         }
