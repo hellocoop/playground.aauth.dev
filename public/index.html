@@ -66,13 +66,13 @@
   <div class="section" id="bootstrap-section">
     <fieldset class="section-box">
       <legend>Bootstrap Agent</legend>
+      <button id="bootstrap-reset-btn" type="button" class="btn-outline section-reset" title="Clear agent binding, tokens, and WebAuthn linkage">Reset</button>
 
       <!--
         Pre-bootstrap UI — intro, Person Server picker, hidden hints
         inputs, and the Bootstrap agent button. Once bootstrapped this
         whole block is hidden by setAuthenticated so the fieldset
         collapses to just the protocol log + Agent Identity rows below.
-        Reset lives on the Authorization Request fieldset's Reset button.
       -->
       <div id="bootstrap-controls">
         <p style="color: var(--muted); font-size: 0.9rem; margin-bottom: 8px;">Bootstrap establishes the binding between you and this agent server.</p>
@@ -109,18 +109,17 @@
       <!--
         Post-bootstrap Agent Identity content lives inline here rather
         than in its own fieldset — once bootstrap completes, the
-        "Bound as …" line + agent-token panels drop in below the
-        protocol log so the whole ceremony reads as one continuous
-        box instead of jumping to a second card. setAuthenticated()
-        removes the `hidden` class.
+        agent-identity + agent-token panels drop in below the protocol
+        log so the whole ceremony reads as one continuous box instead
+        of jumping to a second card. setAuthenticated() removes the
+        `hidden` class. "Bootstrap complete" renders as an inset
+        legend on the fieldset's bottom border (mirroring the top
+        legend) via .section-legend-bottom.
       -->
       <div id="auth-section" class="hidden" data-test="auth-card">
-        <div id="auth-info">
-          <p><span class="step-status step-status-success">&#x2713;</span> Bound as <strong id="auth-user"></strong></p>
-        </div>
         <div id="token-section">
-          <div id="agent-id-row" style="margin-top: 0.75rem;">
-            <label>Agent Sub</label>
+          <div id="agent-id-row">
+            <label>Agent Identity</label>
             <div class="readonly-field">
               <span class="readonly-field-text" id="agent-id"></span>
               <button class="copy-btn" type="button" data-copy-target="#agent-id" aria-label="Copy"></button>
@@ -147,7 +146,7 @@
             </div>
           </details>
         </div>
-        <p class="bootstrap-complete" aria-live="polite"><span class="step-status step-status-success">&#x2713;</span> Bootstrap complete — agent is bound to this user and ready to request scopes.</p>
+        <div class="section-legend-bottom" aria-live="polite">Bootstrap complete</div>
       </div>
     </fieldset>
   </div>
@@ -155,7 +154,7 @@
   <div class="section hidden" id="authz-section">
     <fieldset class="section-box">
       <legend>Authorization Request</legend>
-      <button id="reset-btn" type="button" class="btn-outline section-reset" title="Clear saved PS, scopes, binding, and tokens">Reset</button>
+      <button id="reset-btn" type="button" class="btn-outline section-reset" title="Clear saved scopes and hints">Reset</button>
 
       <details class="section-group" open>
         <summary class="section-heading">
@@ -211,7 +210,7 @@
       </details>
 
       <div class="authz-actions">
-        <button id="authz-btn" type="button">Start</button>
+        <button id="authz-btn" type="button">Start authorization</button>
       </div>
 
       <!-- Authorization's network calls log inline here — separate

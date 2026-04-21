@@ -2829,7 +2829,7 @@
 
   // public/log-text.json
   var log_text_default = {
-    _about: "Single source of truth for every label + description rendered into the protocol log. Templates use {placeholder} for dynamic values substituted at runtime. All references to the agent server are spelled 'Agent Server' (not 'AS') to avoid conflation with 'Access Server' elsewhere in the AAuth protocol. Person Server is 'PS' in terse HTTP lines and 'Person Server' in prose.",
+    _about: "Single source of truth for every label + description rendered into the protocol log. Templates use {placeholder} for dynamic values substituted at runtime. All references to the agent server are spelled 'Agent Server' (not 'AS') to avoid conflation with 'Access Server' elsewhere in the AAuth protocol. The person server is spelled 'Person Server' everywhere (including terse HTTP lines) for consistency.",
     sections: {
       bootstrap: "Bootstrap logs",
       bootstrap_resumed: "Bootstrap logs (resumed)",
@@ -2843,26 +2843,26 @@
         description: "The agent creates a fresh signing keypair for this session. The private half never leaves this device, so tokens issued later are useless to anyone else."
       },
       ps_discovery_request: {
-        label_template: "Agent \u2192 PS: GET {path}",
-        label_resolved_template: "Agent \u2192 PS: GET {path} \u2192 {status}",
-        label_error_network_template: "Agent \u2192 PS: GET {path} (network error)",
+        label_template: "Agent \u2192 Person Server: GET {path}",
+        label_resolved_template: "Agent \u2192 Person Server: GET {path} \u2192 {status}",
+        label_error_network_template: "Agent \u2192 Person Server: GET {path} (network error)",
         description: "Before the agent can talk to your Person Server, it asks which URLs to use for bootstrap and for sending you to consent."
       },
       ps_bootstrap_request: {
-        label_template: "Agent \u2192 PS: POST {path}",
-        label_resolved_template: "Agent \u2192 PS: POST {path} \u2192 {status}",
-        label_error_network_template: "Agent \u2192 PS: POST {path} (network error)",
-        label_error_unexpected_template: "Agent \u2192 PS: POST {path} \u2192 {status} (unexpected)",
-        description: "The agent tells your Person Server a new agent wants to connect. The PS replies with a URL to show you for approval, plus one the agent can check for your decision."
+        label_template: "Agent \u2192 Person Server: POST {path}",
+        label_resolved_template: "Agent \u2192 Person Server: POST {path} \u2192 {status}",
+        label_error_network_template: "Agent \u2192 Person Server: POST {path} (network error)",
+        label_error_unexpected_template: "Agent \u2192 Person Server: POST {path} \u2192 {status} (unexpected)",
+        description: "The agent tells your Person Server a new agent wants to connect. The Person Server replies with a URL to show you for approval, plus one the agent can check for your decision."
       },
       ps_pending_longpoll: {
-        label_template: "Agent \u2192 PS: GET {path} (long-poll)",
-        label_resolved_template: "Agent \u2192 PS: GET {path} \u2192 {status}",
-        label_resolved_no_token_template: "Agent \u2192 PS: GET {path} \u2192 200 (no bootstrap_token)",
-        description: "The agent keeps one request open while you decide, instead of polling every second. The PS answers the moment you approve or deny."
+        label_template: "Agent \u2192 Person Server: GET {path} (long-poll)",
+        label_resolved_template: "Agent \u2192 Person Server: GET {path} \u2192 {status}",
+        label_resolved_no_token_template: "Agent \u2192 Person Server: GET {path} \u2192 200 (no bootstrap_token)",
+        description: "The agent keeps one request open while you decide, instead of polling every second. The Person Server answers the moment you approve or deny."
       },
       ps_consent_prompt: {
-        label: "User at PS: consent prompt",
+        label: "User at Person Server: consent prompt",
         description: "Your Person Server asks if you trust this agent. Approve here on this device, or scan the QR to approve on another.",
         label_resolved_success: "User Consent Completed",
         label_resolved_denied: "Consent Denied",
@@ -2870,12 +2870,12 @@
         label_resolved_no_token: "Pending returned no bootstrap_token"
       },
       ps_bootstrap_token_received: {
-        label: "PS response: bootstrap_token received",
-        description: "Once you approve, the PS hands the agent a short-lived, single-use ticket proving you said yes \u2014 the agent redeems it with its own Agent Server next."
+        label: "Person Server response: bootstrap_token received",
+        description: "Once you approve, the Person Server hands the agent a short-lived, single-use ticket proving you said yes \u2014 the agent redeems it with its own Agent Server next."
       },
       ps_pending_bad_response: {
         label: "Bad /pending response",
-        description: "The PS replied in a shape the agent didn't expect, so the bootstrap can't continue."
+        description: "The Person Server replied in a shape the agent didn't expect, so the bootstrap can't continue."
       },
       ps_user_denied: {
         label: "User denied consent",
@@ -2883,13 +2883,13 @@
       },
       ps_interaction_timed_out: {
         label: "Interaction timed out",
-        description: "You didn't approve or deny in time, so the PS gave up waiting."
+        description: "You didn't approve or deny in time, so the Person Server gave up waiting."
       },
       agent_server_challenge_request: {
         label_template: "Agent \u2192 Agent Server: POST {path}",
         label_resolved_template: "Agent \u2192 Agent Server: POST {path} \u2192 {status}",
         label_error_network_template: "Agent \u2192 Agent Server: POST {path} (network error)",
-        description: "The agent shows the PS's ticket to its Agent Server, which asks for a WebAuthn ceremony to confirm a real human is here."
+        description: "The agent shows the Person Server's ticket to its Agent Server, which asks for a WebAuthn ceremony to confirm a real human is here."
       },
       webauthn_ceremony_failed: {
         label: "WebAuthn ceremony failed",
@@ -2903,13 +2903,13 @@
         label_template: "Agent \u2192 Agent Server: POST {path}",
         label_resolved_template: "Agent \u2192 Agent Server: POST {path} \u2192 {status}",
         label_error_network_template: "Agent \u2192 Agent Server: POST {path} (network error)",
-        description: "The Agent Server verifies your WebAuthn response and remembers the pairing of you, this PS, and this device \u2014 so future refreshes skip the PS."
+        description: "The Agent Server verifies your WebAuthn response and remembers the pairing of you, this Person Server, and this device \u2014 so future refreshes skip the Person Server."
       }
     },
     bootstrap_resumed: {
       ps_consent_prompt: {
-        label: "User at PS: consent prompt (resumed)",
-        description: "You returned mid-approval (page reload or redirect back from the PS). The agent picks up the same pending request instead of starting over."
+        label: "User at Person Server: consent prompt (resumed)",
+        description: "You returned mid-approval (page reload or redirect back from the Person Server). The agent picks up the same pending request instead of starting over."
       }
     },
     refresh: {
@@ -2951,21 +2951,21 @@
         label_template: "Agent \u2192 Agent Server: POST {path}",
         label_resolved_template: "Agent \u2192 Agent Server: POST {path} \u2192 {status}",
         label_error_network_template: "Agent \u2192 Agent Server: POST {path} (network error)",
-        description: "The agent asks its Agent Server for a resource token scoped to this PS and resource. The Agent Server signs it on the agent's behalf."
+        description: "The agent asks its Agent Server for a resource token scoped to this Person Server and resource. The Agent Server signs it on the agent's behalf."
       },
       ps_token_request: {
-        label_template: "Agent \u2192 PS: POST {path}",
-        label_resolved_template: "Agent \u2192 PS: POST {path} \u2192 {status}",
-        label_error_network_template: "Agent \u2192 PS: POST {path} (network error)",
-        description: "The agent trades that resource token with your Person Server for an auth token. A 200 means you've already consented to this scope; 202 means the PS needs your approval for a new one."
+        label_template: "Agent \u2192 Person Server: POST {path}",
+        label_resolved_template: "Agent \u2192 Person Server: POST {path} \u2192 {status}",
+        label_error_network_template: "Agent \u2192 Person Server: POST {path} (network error)",
+        description: "The agent trades that resource token with your Person Server for an auth token. A 200 means you've already consented to this scope; 202 means the Person Server needs your approval for a new one."
       },
       ps_pending_longpoll: {
-        label_template: "Agent \u2192 PS: GET {path} (long-poll)",
-        label_resolved_template: "Agent \u2192 PS: GET {path} \u2192 {status}",
-        description: "If new consent is needed, the agent keeps one request open while you decide, instead of polling. The PS responds the moment you approve or deny."
+        label_template: "Agent \u2192 Person Server: GET {path} (long-poll)",
+        label_resolved_template: "Agent \u2192 Person Server: GET {path} \u2192 {status}",
+        description: "If new consent is needed, the agent keeps one request open while you decide, instead of polling. The Person Server responds the moment you approve or deny."
       },
       ps_consent_prompt: {
-        label: "User at PS: consent prompt",
+        label: "User at Person Server: consent prompt",
         description: "Your Person Server asks if this agent may use the new scope. Approve here, or scan the QR to approve on another device.",
         label_resolved_success: "Interaction Completed",
         label_resolved_denied: "Interaction Denied",
@@ -2986,7 +2986,7 @@
     },
     authorize_resumed: {
       ps_consent_prompt: {
-        label: "User at PS: consent prompt (resumed)",
+        label: "User at Person Server: consent prompt (resumed)",
         description: "You returned mid-approval for a scope upgrade. The agent picks up the same pending request instead of starting over."
       }
     },

@@ -313,13 +313,12 @@ window.aauthWebAuthn = {
 // Scrolls to the Agent Identity card on first reveal so a post-OAuth
 // redirect-back lands the viewport on the next actionable block instead
 // of wherever the Bootstrap section happened to be.
-function setAuthenticated(label) {
+function setAuthenticated(_label) {
   document.getElementById('bootstrap-controls')?.classList.add('hidden')
   const authSection = document.getElementById('auth-section')
   const authzSection = document.getElementById('authz-section')
   authSection?.classList.remove('hidden')
   authzSection?.classList.remove('hidden')
-  document.getElementById('auth-user').textContent = label
   // Defer one frame so layout settles (hidden → visible) before scroll.
   requestAnimationFrame(() => {
     authSection?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -509,16 +508,31 @@ function renderScopeRow(scope, description, opts = {}) {
   return `<label class="checkbox-label"${title}><input type="checkbox" ${attrs.join(' ')}> <span>${scope}${required}</span></label>`
 }
 
+// Identity scopes split into two visual columns:
+//   Standard scopes — OIDC-style claims the PS can release from its own record
+//   Hellō scopes    — linked-account scopes specific to Hellō's extended profile
+// getSelectedIdentityScopes() still queries `#identity-scope-grid input:checked`,
+// so the wrapping id stays intact; columns are sub-containers within it.
+const EXTENDED_SCOPE_NAMES = new Set(['discord', 'github', 'gitlab', 'twitter', 'ethereum'])
+
 function hydrateIdentityScopes() {
   const grid = document.getElementById('identity-scope-grid')
   if (!grid) return
-  grid.innerHTML = IDENTITY_SCOPES.map((s) =>
-    renderScopeRow(s.name, s.description, {
-      checked: !!s.required || !!s.checked,
-      disabled: !!s.required,
-      required: !!s.required,
-    }),
-  ).join('')
+  const standard = IDENTITY_SCOPES.filter((s) => !EXTENDED_SCOPE_NAMES.has(s.name))
+  const extended = IDENTITY_SCOPES.filter((s) => EXTENDED_SCOPE_NAMES.has(s.name))
+  const renderCol = (heading, scopes) => `
+    <div class="scope-column">
+      <div class="scope-column-heading">${heading}</div>
+      <div class="scope-column-items">
+        ${scopes.map((s) => renderScopeRow(s.name, s.description, {
+          checked: !!s.required || !!s.checked,
+          disabled: !!s.required,
+          required: !!s.required,
+        })).join('')}
+      </div>
+    </div>
+  `
+  grid.innerHTML = renderCol('Standard scopes', standard) + renderCol('Hellō scopes', extended)
 }
 
 async function hydrateResourceScopes() {
@@ -687,23 +701,25 @@ document.addEventListener('click', (e) => {
 })
 
 
-// Reset button — clears all playground state (settings, binding, agent
-// token, ephemeral key, session, agent-name) and reloads. Matches the
-// pattern in playground.hello.dev; handy when testing a fresh bootstrap
-// or switching between person servers.
-document.getElementById('reset-btn')?.addEventListener('click', async () => {
-  if (!confirm('Reset playground? This clears your PS selection, scopes, agent binding, tokens, and WebAuthn linkage — on the agent server too, so the next Continue runs a full bootstrap (registering a new passkey).')) return
+// Reset buttons — two-scope:
+//
+//   Bootstrap Reset — clears agent binding, tokens, keypair, WebAuthn
+//   linkage, agent name, and pending-bootstrap state (also tells the
+//   agent server to forget the binding). Next visit starts at the
+//   pre-bootstrap screen with a fresh passkey register.
+//
+//   Authorization Reset — clears only scope selections, hints, and any
+//   pending-authorize state. Does not touch binding/token; re-requesting
+//   authorization reuses the same agent identity.
+document.getElementById('bootstrap-reset-btn')?.addEventListener('click', async () => {
+  if (!confirm('Reset bootstrap? This clears your agent binding, tokens, and WebAuthn linkage — on the agent server too, so the next Bootstrap runs a full register (new passkey).')) return
 
-  // Tell the server to drop the (PS, user) binding so the next bootstrap
-  // runs the register path (new WebAuthn credential, new aauth_sub).
-  // Without this, the server-side binding survives the client-side reset
-  // and the next bootstrap silently asserts against the old credential.
-  // /binding/forget must be signed with sig=jwt + agent_token so the
-  // server can authorize the deletion (agent_token.sub must match the
-  // binding's aauth_sub). If we don't have both a saved agent_token and
-  // the ephemeral that signs for it, skip the server call — client
-  // reset still happens, the server binding just stays until it's
-  // orphaned by expiry. Not ideal for "fresh register" UX but safe.
+  // Tell the server to drop the (Person Server, user) binding so the next
+  // bootstrap runs the register path (new WebAuthn credential, new
+  // aauth_sub). If we don't have both a saved agent_token and the
+  // ephemeral that signs for it, skip the server call — client reset
+  // still happens, the server binding just stays until it's orphaned by
+  // expiry.
   const savedBindingKey = localStorage.getItem('aauth-binding-key')
   const savedAgentToken = localStorage.getItem('aauth-agent-token')
   if (savedBindingKey && savedAgentToken && window.aauthSigFetch) {
@@ -716,17 +732,29 @@ document.getElementById('reset-btn')?.addEventListener('click', async () => {
     } catch { /* best-effort — still proceed with client reset */ }
   }
 
-  // Sweep every playground-owned localStorage key. Prefix-matched so
-  // future additions are covered automatically.
-  const toRemove = []
-  for (let i = 0; i < localStorage.length; i++) {
-    const k = localStorage.key(i)
-    if (k && k.startsWith('aauth-')) toRemove.push(k)
-  }
-  for (const k of toRemove) localStorage.removeItem(k)
+  // Bootstrap-scoped localStorage keys. Scope selections + hints live in
+  // aauth-playground-settings and are preserved across a bootstrap reset.
+  const BOOTSTRAP_KEYS = [
+    'aauth-binding-key',
+    'aauth-binding-ps',
+    'aauth-binding-sub',
+    'aauth-agent-token',
+    'aauth-agent-name',
+    'aauth-pending-bootstrap',
+    'aauth-pending-authorize',
+  ]
+  for (const k of BOOTSTRAP_KEYS) localStorage.removeItem(k)
 
-  // Clear ephemeral keypair stored in IndexedDB.
   try { await clearKeyPair() } catch { /* IndexedDB may be unavailable */ }
+
+  location.reload()
+})
+
+document.getElementById('reset-btn')?.addEventListener('click', () => {
+  if (!confirm('Reset authorization? This clears your scope selections, hints, and any pending authorization request. Your agent binding stays intact.')) return
+
+  localStorage.removeItem(SETTINGS_KEY)
+  localStorage.removeItem('aauth-pending-authorize')
 
   location.reload()
 })

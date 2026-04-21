@@ -445,14 +445,13 @@ a { color: var(--accent); }
 }
 .log-step-static > .section-heading { cursor: default; }
 
-/* Body rendered under each step's heading. A leading <p> is the one-line
-   description for the step — rendered smaller, muted, tight to the heading.
-   Other children (token panels, response blocks) keep their own spacing. */
+/* Body rendered under each step's heading. Step descriptions (the leading
+   <p>) are currently hidden so the log reads as a clean request/response
+   trace; other children (token panels, response blocks) keep their own
+   spacing. */
 .log-step-body { margin-top: 0.5rem; }
 .log-step-body > p:first-child {
-  margin: -8px 0 0.75rem;
-  font-size: 0.8rem;
-  color: var(--muted);
+  display: none;
 }
 /* "Request" / "Response" caption above each monospace box in a log step. */
 .token-label {
@@ -467,12 +466,22 @@ a { color: var(--accent); }
 
 a.hello-btn { text-decoration: none; }
 
-/* "✓ Bootstrap complete …" row at the bottom of the Bootstrap Agent
-   fieldset. Styled to match the "✓ Bound as …" row above it so the end-
-   state reads as a plain status line, not a celebratory banner. */
-.bootstrap-complete {
-  margin-top: 1rem;
-  font-size: 0.9rem;
+/* "Bootstrap complete" status pinned to the bottom border of the
+   Bootstrap Agent fieldset, mirroring the top-border legend ("Bootstrap
+   Agent") — same mono uppercase typography, same inset-into-border
+   positioning. Fieldsets only support one <legend>, so this is a
+   plain div absolutely positioned relative to the .section-box. */
+.section-legend-bottom {
+  position: absolute;
+  bottom: -0.55rem;
+  left: 1rem;
+  padding: 0 0.35rem;
+  background: var(--bg);
+  font-family: 'IBM Plex Mono', 'SF Mono', 'Fira Code', monospace;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--muted);
 }
 
 /* Text-link "Copy link" under the QR. Reuses .copy-btn so the existing
@@ -524,14 +533,14 @@ a.hello-btn { text-decoration: none; }
   margin-top: 1rem;
 }
 
-/* The "Bound as …" block (#auth-info) hangs right below #bootstrap-log
+/* Agent Identity panel (#auth-section) hangs right below #bootstrap-log
    inside the same fieldset. When a bootstrap ceremony just ran, the log
    above it has content and the log div is visible — we want a 1rem gap
-   between the end-of-log and Bound-as. But on a page reload the log is
-   empty and `.hidden`, so Bound-as is visually the first item in the
-   section and the gap reads as stray top padding. Apply the gap only
-   when the preceding log is actually visible. */
-.protocol-log:not(.hidden) + #auth-info {
+   between end-of-log and the panel. On a page reload the log is empty
+   and `.hidden`, so #auth-section is visually the first item in the
+   section and any top margin would read as stray padding. Apply the
+   gap only when the preceding log is actually visible. */
+.protocol-log:not(.hidden) + #auth-section {
   margin-top: 1rem;
 }
 
@@ -572,13 +581,13 @@ details.log-section + details.log-section {
   border-top: 1px solid var(--border);
 }
 
-/* Start button under the Authorization Request form. Full-width so the
-   primary action is unambiguous; Reset moved up to the fieldset's top-right
+/* Start button under the Authorization Request form. Sized to the label
+   rather than full-width so the primary action stays visually balanced
+   with the rest of the form. Reset sits at the fieldset's top-right
    corner (see .section-reset). */
 .authz-actions {
   margin-top: 0.5rem;
 }
-.authz-actions #authz-btn { width: 100%; }
 
 /* Reset button pinned to the top-right of the Authorization Request
    fieldset. Visually sits across from the <legend> label; small and
@@ -631,6 +640,32 @@ details.log-section + details.log-section {
   /* Keep each row intact within a single column — no breaking a label
      across the column boundary. */
   break-inside: avoid;
+  margin: 0 0 0.4rem 0;
+}
+
+/* Identity scope picker is split into two labeled columns (Standard /
+   Hellō). Override .scope-grid's multi-column flow with a fixed
+   2-column grid so each list renders top-to-bottom under its own
+   heading. Resource scopes keep the column-flow behavior. */
+#identity-scope-grid {
+  columns: unset;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.25rem;
+}
+.scope-column-items {
+  display: flex;
+  flex-direction: column;
+}
+.scope-column-items .checkbox-label {
+  margin: 0 0 0.4rem 0;
+}
+.scope-column-heading {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  font-family: 'IBM Plex Mono', 'SF Mono', 'Fira Code', monospace;
   margin: 0 0 0.4rem 0;
 }
 .scope-required { color: var(--text); margin-left: 0.15rem; }
