@@ -4169,6 +4169,10 @@ ${renderJSON(body)}`;
   document.getElementById("bootstrap-btn")?.addEventListener("click", startBootstrap);
   document.getElementById("authz-btn").addEventListener("click", startAuthorize);
   document.addEventListener("click", (e) => {
+    const helloBtn = e.target.closest(".interaction-actions .hello-btn");
+    if (helloBtn) helloBtn.classList.add("hello-btn-loader");
+  });
+  document.addEventListener("click", (e) => {
     const btn = e.target.closest(".js-scroll-authz");
     if (!btn) return;
     const section = document.getElementById("authz-section");

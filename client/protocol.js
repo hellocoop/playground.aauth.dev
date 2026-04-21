@@ -1451,6 +1451,13 @@ function decodeJWTPayloadBrowser(jwt) {
 document.getElementById('bootstrap-btn')?.addEventListener('click', startBootstrap)
 document.getElementById('authz-btn').addEventListener('click', startAuthorize)
 
+// Hellō Continue button — swap to loader state on click so the user
+// sees immediate feedback while the same-tab redirect navigates away.
+document.addEventListener('click', (e) => {
+  const helloBtn = e.target.closest('.interaction-actions .hello-btn')
+  if (helloBtn) helloBtn.classList.add('hello-btn-loader')
+})
+
 document.addEventListener('click', (e) => {
   const btn = e.target.closest('.js-scroll-authz')
   if (!btn) return
