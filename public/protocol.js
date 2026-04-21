@@ -3069,6 +3069,11 @@ ${renderJSON(body)}`;
     const bootstrapEndpoint = psMetadata.bootstrap_endpoint || `${psUrl.replace(/\/$/, "")}/bootstrap`;
     const psBootstrapBody = {
       agent_server: agentServerOrigin,
+      // Force the consent screen on every bootstrap so the demo flow shows
+      // the full UX even after a user has already bound an agent server.
+      // Without this the PS silently re-mints from its live thumbprint
+      // session (1h TTL) and the consent page never renders.
+      prompt: "consent",
       ...hints
     };
     const psBootReqStep = addLogStep(
@@ -3584,6 +3589,10 @@ ${renderJSON(body)}`;
     const psRequestBody = {
       resource_token: resourceToken,
       capabilities: ["interaction"],
+      // Force the consent screen on every request so the demo flow shows
+      // the full UX even when the PS would otherwise auto-release from a
+      // cached binding (matches OIDC prompt=consent semantics).
+      prompt: "consent",
       ...hints
     };
     const psReqStep = addLogStep(
