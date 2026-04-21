@@ -120,7 +120,7 @@
         </div>
         <div id="token-section">
           <div id="agent-id-row" style="margin-top: 0.75rem;">
-            <label>Agent Token</label>
+            <label>Agent Sub</label>
             <div class="readonly-field">
               <span class="readonly-field-text" id="agent-id"></span>
               <button class="copy-btn" type="button" data-copy-target="#agent-id" aria-label="Copy"></button>
@@ -146,6 +146,10 @@
               <div class="token-display" id="token-payload"></div>
             </div>
           </details>
+        </div>
+        <div class="bootstrap-complete-banner" aria-live="polite">
+          <span class="bootstrap-complete-check" aria-hidden="true">✓</span>
+          <span>Bootstrap complete — agent is bound to this user and ready to request scopes.</span>
         </div>
       </div>
     </fieldset>

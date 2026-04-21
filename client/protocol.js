@@ -301,7 +301,7 @@ async function runBootstrap(psUrl, hints) {
   const { keyPair, publicJwk } = await window.aauthEphemeral.rotate()
   addLogStep('Agent: generate ephemeral key', 'success',
     `<p>Agent generates an Ed25519 keypair — private stays local, public binds the issued token to this agent so only the private-key holder can use it.</p>` +
-    tokenWrap(renderJSON(publicJwk))
+    tokenWrap(renderJSON({ kty: publicJwk.kty, crv: publicJwk.crv, x: publicJwk.x }))
   )
 
   // Step 1: Discover PS metadata to find its /bootstrap endpoint.
@@ -586,9 +586,8 @@ async function completeAgentServerBootstrap(bootstrapToken, publicJwk, keyPair, 
     return false
   }
 
-  addLogStep('Browser: WebAuthn ceremony', 'success',
-    `<p>Browser invokes <code>navigator.credentials.*</code> so the authenticator (passkey / platform auth) can sign the challenge — proves a human is present.</p>` +
-    `<p>Returned a WebAuthn ${challengeData.webauthn_type === 'register' ? 'attestation' : 'assertion'} bound to the challenge.</p>`
+  addLogStep('User at Browser: WebAuthn ceremony', 'success',
+    `<p>User taps the passkey / platform authenticator to sign the agent server's challenge — proves a human is present and the correct credential is on this device.</p>`
   )
 
   // POST /bootstrap/verify — also signed with sig=jwt + bootstrap_token.
@@ -691,16 +690,17 @@ async function runRefresh() {
   addLogSection('Refresh logs')
 
   const { publicJwk: newPublicJwk } = await window.aauthEphemeral.stage()
-  addLogStep('Stage new ephemeral key', 'success',
-    `<p>Generated a fresh Ed25519 keypair but did not persist it. The current /refresh calls are signed with the <em>old</em> ephemeral (bound to the existing <code>agent_token.cnf.jwk</code>); the new key will be committed only after <code>/refresh/verify</code> succeeds.</p>` +
-    tokenWrap(renderJSON(newPublicJwk))
+  addLogStep('Agent: stage new ephemeral key', 'success',
+    `<p>Agent generates a fresh keypair but holds it staged; /refresh is still signed with the old key (matches current agent_token.cnf). The new key is committed only after verify succeeds so a failed refresh leaves the old agent_token usable.</p>` +
+    tokenWrap(renderJSON({ kty: newPublicJwk.kty, crv: newPublicJwk.crv, x: newPublicJwk.x }))
   )
 
   const oldSigningJwk = await crypto.subtle.exportKey('jwk', oldKeyPair.publicKey)
   const refreshChallengeEndpoint = `${window.location.origin}/refresh/challenge`
   const refreshChallengeBody = { binding_key: bindingKey, new_ephemeral_jwk: newPublicJwk }
 
-  const reqStep = addLogStep(`POST ${new URL(refreshChallengeEndpoint).pathname}`, 'pending',
+  const reqStep = addLogStep(`Agent \u2192 AS: POST ${new URL(refreshChallengeEndpoint).pathname}`, 'pending',
+    `<p>Agent asks its own agent server for a WebAuthn challenge against the stored binding; signed with the old ephemeral so the AS can prove the caller is the current cnf-holder.</p>` +
     formatRequest('POST', refreshChallengeEndpoint, {
       'Content-Type': 'application/json',
       'Signature-Input': 'sig=("@method" "@authority" "@path" "content-type" "signature-key");created=...',
@@ -722,18 +722,18 @@ async function runRefresh() {
     })
     challengeData = await res.json()
     if (!res.ok) {
-      resolveStep(reqStep, 'error', `POST /refresh/challenge \u2192 ${res.status}`)
-      addLogStep('Refresh rejected', 'error', formatResponse(res.status, null, challengeData))
+      resolveStep(reqStep, 'error', `Agent \u2192 AS: POST /refresh/challenge \u2192 ${res.status}`)
+      appendStepBody(reqStep, formatResponse(res.status, null, challengeData))
       window.aauthEphemeral.discardStaged()
       // Binding is stale — drop it so the next Continue does a full bootstrap.
       window.aauthBinding.clearBinding()
       return null
     }
-    resolveStep(reqStep, 'success', 'POST /refresh/challenge \u2192 200')
+    resolveStep(reqStep, 'success', `Agent \u2192 AS: POST /refresh/challenge \u2192 200`)
+    appendStepBody(reqStep, formatResponse(200, null, challengeData))
   } catch (err) {
-    resolveStep(reqStep, 'error', 'POST /refresh/challenge (network error)')
-    addLogStep('Refresh network error', 'error',
-      `<p style="color: var(--error)">${escapeHtml(err.message)}</p>`)
+    resolveStep(reqStep, 'error', 'Agent \u2192 AS: POST /refresh/challenge (network error)')
+    appendStepBody(reqStep, `<p style="color: var(--error)">${escapeHtml(err.message)}</p>`)
     window.aauthEphemeral.discardStaged()
     return null
   }
@@ -750,15 +750,16 @@ async function runRefresh() {
     return null
   }
 
-  addLogStep('WebAuthn Assertion Completed', 'success',
-    `<p>Browser returned a WebAuthn assertion against the stored credential for this binding.</p>`)
+  addLogStep('User at Browser: WebAuthn ceremony', 'success',
+    `<p>User taps the passkey to sign the AS's refresh challenge — proves the same human is still present on this device.</p>`)
 
   const refreshVerifyEndpoint = `${window.location.origin}/refresh/verify`
   const refreshVerifyBody = {
     refresh_tx_id: challengeData.refresh_tx_id,
     webauthn_response: webauthnResponse,
   }
-  const verifyStep = addLogStep(`POST ${new URL(refreshVerifyEndpoint).pathname}`, 'pending',
+  const verifyStep = addLogStep(`Agent \u2192 AS: POST ${new URL(refreshVerifyEndpoint).pathname}`, 'pending',
+    `<p>Agent returns the signed WebAuthn assertion; AS verifies it, promotes the staged key to cnf-bound for the new agent_token, and mints fresh tokens.</p>` +
     formatRequest('POST', refreshVerifyEndpoint, {
       'Content-Type': 'application/json',
       'Signature-Input': 'sig=("@method" "@authority" "@path" "content-type" "signature-key");created=...',
@@ -783,16 +784,15 @@ async function runRefresh() {
     })
     result = await res.json()
     if (!res.ok) {
-      resolveStep(verifyStep, 'error', `POST /refresh/verify \u2192 ${res.status}`)
-      addLogStep('Refresh verify failed', 'error', formatResponse(res.status, null, result))
+      resolveStep(verifyStep, 'error', `Agent \u2192 AS: POST /refresh/verify \u2192 ${res.status}`)
+      appendStepBody(verifyStep, formatResponse(res.status, null, result))
       window.aauthEphemeral.discardStaged()
       return null
     }
-    resolveStep(verifyStep, 'success', 'POST /refresh/verify \u2192 200')
+    resolveStep(verifyStep, 'success', `Agent \u2192 AS: POST /refresh/verify \u2192 200`)
   } catch (err) {
-    resolveStep(verifyStep, 'error', 'POST /refresh/verify (network error)')
-    addLogStep('Refresh verify network error', 'error',
-      `<p style="color: var(--error)">${escapeHtml(err.message)}</p>`)
+    resolveStep(verifyStep, 'error', 'Agent \u2192 AS: POST /refresh/verify (network error)')
+    appendStepBody(verifyStep, `<p style="color: var(--error)">${escapeHtml(err.message)}</p>`)
     window.aauthEphemeral.discardStaged()
     return null
   }
@@ -801,9 +801,7 @@ async function runRefresh() {
   await window.aauthEphemeral.commitStaged()
 
   window.aauthApplyBootstrapResult(result)
-  addLogStep('Agent Token Refreshed', 'success',
-    formatToken('Agent Token (aa-agent+jwt)', result.agent_token, decodeJWTPayloadBrowser(result.agent_token))
-  )
+  appendStepBody(verifyStep, formatToken('Agent Token (aa-agent+jwt)', result.agent_token, decodeJWTPayloadBrowser(result.agent_token)))
   return result
 }
 
@@ -921,7 +919,8 @@ async function runAuthorizationAgainstPS(psUrl, scope, hints) {
   const authzBody = { ps: psUrl, scope }
   const signingJwk = await crypto.subtle.exportKey('jwk', keyPair.publicKey)
 
-  const authzReqStep = addLogStep(`POST ${new URL(authzEndpoint).pathname}`, 'pending',
+  const authzReqStep = addLogStep(`Agent \u2192 AS: POST ${new URL(authzEndpoint).pathname}`, 'pending',
+    `<p>Agent asks its own agent server for a resource_token scoped to this PS + resource; signed with the agent's ephemeral and carrying the agent_token as authentication.</p>` +
     formatRequest('POST', authzEndpoint, {
       'Content-Type': 'application/json',
       'Signature-Input': 'sig=("@method" "@authority" "@path" "content-type" "signature-key");created=...',
@@ -942,19 +941,18 @@ async function runAuthorizationAgainstPS(psUrl, scope, hints) {
     })
     authzData = await res.json()
     if (!res.ok) {
-      resolveStep(authzReqStep, 'error', `POST /authorize \u2192 ${res.status}`)
-      addLogStep('Authorization request failed', 'error', formatResponse(res.status, null, authzData))
+      resolveStep(authzReqStep, 'error', `Agent \u2192 AS: POST /authorize \u2192 ${res.status}`)
+      appendStepBody(authzReqStep, formatResponse(res.status, null, authzData))
       return
     }
-    resolveStep(authzReqStep, 'success', 'POST /authorize \u2192 200')
+    resolveStep(authzReqStep, 'success', `Agent \u2192 AS: POST /authorize \u2192 200`)
   } catch (err) {
-    resolveStep(authzReqStep, 'error', 'POST /authorize (network error)')
-    addLogStep('Network error', 'error', `<p style="color: var(--error)">${escapeHtml(err.message)}</p>`)
+    resolveStep(authzReqStep, 'error', 'Agent \u2192 AS: POST /authorize (network error)')
+    appendStepBody(authzReqStep, `<p style="color: var(--error)">${escapeHtml(err.message)}</p>`)
     return
   }
 
-  addLogStep('Resource Token Created', 'success',
-    formatToken('Resource Token (aa-resource+jwt)', authzData.resource_token, authzData.resource_token_decoded))
+  appendStepBody(authzReqStep, formatToken('Resource Token (aa-resource+jwt)', authzData.resource_token, authzData.resource_token_decoded))
 
   const psMetadata = authzData.ps_metadata
   const resourceToken = authzData.resource_token
@@ -965,7 +963,8 @@ async function runAuthorizationAgainstPS(psUrl, scope, hints) {
     ...hints,
   }
 
-  const psReqStep = addLogStep(`POST ${new URL(tokenEndpoint).pathname}`, 'pending',
+  const psReqStep = addLogStep(`Agent \u2192 PS: POST ${new URL(tokenEndpoint).pathname}`, 'pending',
+    `<p>Agent trades the resource_token with the PS for a scoped auth_token. 200 = scopes already consented; 202 = user consent needed for a scope upgrade.</p>` +
     formatRequest('POST', tokenEndpoint, {
       'Content-Type': 'application/json',
       'Signature-Input': 'sig=("@method" "@authority" "@path" "signature-key");created=...',
@@ -996,16 +995,15 @@ async function runAuthorizationAgainstPS(psUrl, scope, hints) {
     try { psBody = await psRes.json() } catch { psBody = null }
 
     const psPath = new URL(tokenEndpoint).pathname
-    resolveStep(psReqStep, psRes.ok ? 'success' : 'error', `POST ${psPath} \u2192 ${psRes.status}`)
+    resolveStep(psReqStep, psRes.ok ? 'success' : 'error', `Agent \u2192 PS: POST ${psPath} \u2192 ${psRes.status}`)
 
     if (psRes.status === 200 && psBody?.auth_token) {
-      addLogStep('Authorization Granted', 'success',
-        formatAuthToken(psBody.auth_token) +
-        anotherRequestButton()
-      )
+      appendStepBody(psReqStep, formatResponse(psRes.status, responseHeaders, psBody))
+      appendStepBody(psReqStep, formatAuthToken(psBody.auth_token) + anotherRequestButton())
       // await callDemoResourceApi(psBody.auth_token)
     } else if (psRes.status === 202) {
       // Interaction required. This can still happen on a scope upgrade.
+      appendStepBody(psReqStep, formatResponse(psRes.status, responseHeaders, psBody))
       const reqHeader = psRes.headers.get('aauth-requirement') || ''
       const fromHeader = parseInteractionHeader(reqHeader)
       const interaction = {
@@ -1014,8 +1012,8 @@ async function runAuthorizationAgainstPS(psUrl, scope, hints) {
         url: fromHeader.url || psMetadata.interaction_endpoint,
       }
       const pollUrl = psRes.headers.get('location') || psBody?.location
-      const interactionStep = addLogStep('Interaction Required', 'pending',
-        formatResponse(202, responseHeaders, psBody) +
+      const interactionStep = addLogStep('User at PS: consent prompt', 'pending',
+        `<p>User approves the scope upgrade at the PS (redirect or QR) — the long-poll above resolves once they decide.</p>` +
         renderInteraction(interaction, pollUrl, 'authorize')
       )
       if (pollUrl) {
@@ -1032,13 +1030,11 @@ async function runAuthorizationAgainstPS(psUrl, scope, hints) {
         startAuthTokenPolling(pollUrl, tokenEndpoint, interactionStep)
       }
     } else {
-      addLogStep('Person Server Response', psRes.ok ? 'success' : 'error',
-        formatResponse(psRes.status, responseHeaders, psBody))
+      appendStepBody(psReqStep, formatResponse(psRes.status, responseHeaders, psBody))
     }
   } catch (err) {
-    resolveStep(psReqStep, 'error', `POST ${new URL(tokenEndpoint).pathname} (network error)`)
-    addLogStep('Person Server Call Failed', 'error',
-      `<p style="color: var(--error)">${escapeHtml(err.message)}</p>`)
+    resolveStep(psReqStep, 'error', `Agent \u2192 PS: POST ${new URL(tokenEndpoint).pathname} (network error)`)
+    appendStepBody(psReqStep, `<p style="color: var(--error)">${escapeHtml(err.message)}</p>`)
   }
 }
 
@@ -1179,12 +1175,14 @@ async function resumePendingInteraction() {
   showLog()
   addLogSection('Bootstrap logs (resumed)')
   const publicJwk = await crypto.subtle.exportKey('jwk', kp.publicKey)
-  const interactionStep = addLogStep('Resuming bootstrap interaction', 'pending',
+  const interactionStep = addLogStep('User at PS: consent prompt (resumed)', 'pending',
+    `<p>Page was reloaded (or returned from the PS redirect) mid-ceremony — resuming the long-poll against the saved pending URL.</p>` +
     `<div class="token-display">Polling ${escapeHtml(saved.pollUrl)}</div>`
   )
   const pending = await pollForBootstrapToken(saved.pollUrl, kp, publicJwk, interactionStep)
   if (!pending) return true
-  addLogStep('Bootstrap Token Received', 'success',
+  addLogStep('PS response: bootstrap_token received', 'success',
+    `<p>Signed JWT cnf-bound to the agent's ephemeral; single-use ticket the agent hands to its own agent server next.</p>` +
     formatToken('Bootstrap Token (aa-bootstrap+jwt)', pending.bootstrap_token, decodeJWTPayloadBrowser(pending.bootstrap_token))
   )
   await completeAgentServerBootstrap(pending.bootstrap_token, publicJwk, kp, { psUrl: saved.psUrl })
@@ -1234,7 +1232,8 @@ async function resumePendingAuthorize() {
   setActiveLog('authz-log')
   showLog()
   addLogSection('Authorization logs (resumed)')
-  const interactionStep = addLogStep('Resuming authorize interaction', 'pending',
+  const interactionStep = addLogStep('User at PS: consent prompt (resumed)', 'pending',
+    `<p>Resuming the authorize long-poll after a return from the PS — waits for the user's scope-consent decision to resolve.</p>` +
     `<div class="token-display">Polling ${escapeHtml(saved.pollUrl)}</div>`
   )
   startAuthTokenPolling(saved.pollUrl, saved.tokenEndpoint, interactionStep)
@@ -1344,12 +1343,12 @@ document.getElementById('authz-btn').addEventListener('click', startAuthorize)
 document.addEventListener('click', (e) => {
   const btn = e.target.closest('.js-scroll-authz')
   if (!btn) return
-  // Clear the authz section's log but preserve binding / tokens — user
-  // wants a fresh authorization flow, not a full reset.
-  setActiveLog('authz-log')
-  clearLog()
+  // Scroll first so the user sees the form before the log disappears —
+  // clearing mid-scroll feels jerky. Clear log after scroll settles.
   const section = document.getElementById('authz-section')
   if (section) section.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  setActiveLog('authz-log')
+  setTimeout(clearLog, 300)
 })
 
 // ── Close the loop: call the demo resource API with the minted auth_token ──

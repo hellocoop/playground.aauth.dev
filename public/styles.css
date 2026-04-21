@@ -467,6 +467,27 @@ a { color: var(--accent); }
 
 a.hello-btn { text-decoration: none; }
 
+/* Filled-green confirmation banner shown at the bottom of the Bootstrap
+   Agent fieldset once the agent_token has been minted. Full-fill (not
+   just border-left) to clearly mark the end-state of the ceremony. */
+.bootstrap-complete-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 1.25rem;
+  padding: 0.75rem 1rem;
+  background: var(--success);
+  color: #0b2e1a;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+.bootstrap-complete-check {
+  font-weight: 700;
+  font-size: 1rem;
+  line-height: 1;
+}
+
 /* Text-link "Copy link" under the QR. Reuses .copy-btn so the existing
    delegated click handler (toggles .copied for 500ms) fires for free;
    these rules override the icon-button defaults to render it as a plain

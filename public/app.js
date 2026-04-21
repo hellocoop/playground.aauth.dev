@@ -493,11 +493,11 @@ const IDENTITY_SCOPES = [
   { name: 'given_name',  description: 'Access your given name' },
   { name: 'family_name', description: 'Access your family name' },
   { name: 'phone',       description: 'Access your phone number' },
-  { name: 'ethereum',    description: 'Access your linked Ethereum wallet' },
   { name: 'discord',     description: 'Access your linked Discord account' },
   { name: 'twitter',     description: 'Access your linked Twitter account' },
   { name: 'github',      description: 'Access your linked GitHub account' },
   { name: 'gitlab',      description: 'Access your linked GitLab account' },
+  { name: 'ethereum',    description: 'Access your linked Ethereum wallet' },
 ]
 
 function renderScopeRow(scope, description, opts = {}) {
