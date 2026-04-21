@@ -104,51 +104,54 @@
         inline here so the user's focus never leaves the fieldset they
         just acted on. Separate log instances live inside Authorization
         Request and (when agent-token refresh fires) Agent Identity.
-        The wrapping <details> makes the whole log collapsible — it's
-        auto-closed on successful bootstrap so the completed ceremony
-        stays available for review without occupying screen space.
+        Each addLogSection() call wraps its steps in a collapsible
+        <details>, so the section heading (BOOTSTRAP / REFRESH / …) is
+        itself the disclosure target — no separate "Protocol log"
+        header row.
       -->
-      <details class="protocol-log-wrap hidden" id="bootstrap-log-wrap" open>
-        <summary class="protocol-log-summary">Protocol log</summary>
-        <div class="protocol-log" id="bootstrap-log"></div>
-      </details>
-    </fieldset>
-  </div>
+      <div class="protocol-log hidden" id="bootstrap-log"></div>
 
-  <div class="section hidden" id="auth-section">
-    <fieldset class="section-box" id="auth-card" data-test="auth-card">
-      <legend>Agent Identity</legend>
-      <div id="auth-info">
-        <p><span class="step-status step-status-success">&#x2713;</span> Bound as <strong id="auth-user"></strong></p>
-      </div>
-      <div id="token-section">
-        <div id="agent-id-row" style="margin-top: 0.75rem;">
-          <label>Agent Token</label>
-          <div class="readonly-field">
-            <span class="readonly-field-text" id="agent-id"></span>
-            <button class="copy-btn" type="button" data-copy-target="#agent-id" aria-label="Copy"></button>
-          </div>
+      <!--
+        Post-bootstrap Agent Identity content lives inline here rather
+        than in its own fieldset — once bootstrap completes, the
+        "Bound as …" line + agent-token panels drop in below the
+        protocol log so the whole ceremony reads as one continuous
+        box instead of jumping to a second card. setAuthenticated()
+        removes the `hidden` class.
+      -->
+      <div id="auth-section" class="hidden" data-test="auth-card">
+        <div id="auth-info" style="margin-top: 1rem;">
+          <p><span class="step-status step-status-success">&#x2713;</span> Bound as <strong id="auth-user"></strong></p>
         </div>
-        <details class="section-group">
-          <summary class="section-heading">
-            <span>Agent Token (aa-agent+jwt)</span>
-            <svg class="section-chevron" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5"/></svg>
-          </summary>
-          <div class="token-wrap">
-            <button class="copy-btn copy-btn-float" type="button" data-copy-target="#agent-token-raw" aria-label="Copy"></button>
-            <div class="token-display" id="agent-token-raw"></div>
+        <div id="token-section">
+          <div id="agent-id-row" style="margin-top: 0.75rem;">
+            <label>Agent Token</label>
+            <div class="readonly-field">
+              <span class="readonly-field-text" id="agent-id"></span>
+              <button class="copy-btn" type="button" data-copy-target="#agent-id" aria-label="Copy"></button>
+            </div>
           </div>
-        </details>
-        <details class="section-group">
-          <summary class="section-heading">
-            <span>Decoded Payload</span>
-            <svg class="section-chevron" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5"/></svg>
-          </summary>
-          <div class="token-wrap">
-            <button class="copy-btn copy-btn-float" type="button" data-copy-target="#token-payload" aria-label="Copy"></button>
-            <div class="token-display" id="token-payload"></div>
-          </div>
-        </details>
+          <details class="section-group">
+            <summary class="section-heading">
+              <span>Agent Token (aa-agent+jwt)</span>
+              <svg class="section-chevron" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5"/></svg>
+            </summary>
+            <div class="token-wrap">
+              <button class="copy-btn copy-btn-float" type="button" data-copy-target="#agent-token-raw" aria-label="Copy"></button>
+              <div class="token-display" id="agent-token-raw"></div>
+            </div>
+          </details>
+          <details class="section-group">
+            <summary class="section-heading">
+              <span>Decoded Payload</span>
+              <svg class="section-chevron" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5"/></svg>
+            </summary>
+            <div class="token-wrap">
+              <button class="copy-btn copy-btn-float" type="button" data-copy-target="#token-payload" aria-label="Copy"></button>
+              <div class="token-display" id="token-payload"></div>
+            </div>
+          </details>
+        </div>
       </div>
     </fieldset>
   </div>
@@ -180,13 +183,10 @@
 
       <!-- Authorization's network calls log inline here — separate
            instance from #bootstrap-log so each fieldset tells a
-           self-contained story of one protocol round trip. Wrapped
-           in a collapsible <details> with the same auto-close-on-
-           success behavior as the bootstrap log. -->
-      <details class="protocol-log-wrap hidden" id="authz-log-wrap" open>
-        <summary class="protocol-log-summary">Protocol log</summary>
-        <div class="protocol-log" id="authz-log"></div>
-      </details>
+           self-contained story of one protocol round trip. Section
+           headings added by addLogSection() are themselves
+           collapsible <details> disclosures. -->
+      <div class="protocol-log hidden" id="authz-log"></div>
     </fieldset>
   </div>
 

@@ -447,31 +447,28 @@ a { color: var(--accent); }
   border-top: 0;
 }
 
-/* When the inline protocol log first appears beneath a Bootstrap /
-   Continue button, the outer <details> wrapper was butting right up
-   against the button. Space it off so the log reads as a separate
-   block of output. Margin rides on the wrapper (not the inner log
-   container) so the collapsed summary still has breathing room. */
-.protocol-log-wrap {
+/* Space the inline log off the button sitting right above it. */
+.protocol-log {
   margin-top: 1rem;
 }
-.protocol-log-summary {
+
+/* Each addLogSection() call emits a <details class="log-section"> whose
+   <summary> doubles as the section heading (BOOTSTRAP / REFRESH / …).
+   The summary is styled to match the old static .log-section-heading
+   rule and gains a rotating chevron so the user knows it's collapsible
+   — no separate "Protocol log" wrapper row. */
+details.log-section > summary.log-section-heading {
   cursor: pointer;
-  padding: 0.4rem 0;
-  font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: var(--muted);
   list-style: none;
   user-select: none;
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 0.5rem;
 }
-.protocol-log-summary::-webkit-details-marker { display: none; }
-/* Rotating chevron — matches the one on .section-group headings. */
-.protocol-log-summary::after {
+details.log-section > summary::-webkit-details-marker { display: none; }
+details.log-section > summary.log-section-heading::after {
   content: '';
+  margin-left: auto;
   width: 0;
   height: 0;
   border-left: 4px solid transparent;
@@ -481,8 +478,16 @@ a { color: var(--accent); }
   transform: rotate(-90deg);
   opacity: 0.7;
 }
-.protocol-log-wrap[open] > .protocol-log-summary::after {
+details.log-section[open] > summary.log-section-heading::after {
   transform: rotate(0deg);
+}
+/* Visual divider between consecutive ceremony sections (Bootstrap +
+   Refresh within the same log, for example). First section gets no
+   divider because it's already inside the bootstrap fieldset's frame. */
+details.log-section + details.log-section {
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
 }
 
 /* Continue + Reset button row under the Authorization Request form. */

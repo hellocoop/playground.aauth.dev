@@ -76,29 +76,16 @@ function currentLog() {
   return __activeLogContainer || document.getElementById('protocol-log')
 }
 
-// The log's collapsible outer wrapper. Hiding/showing lives on the
-// wrapper so the <details> disclosure state (open/closed) is preserved
-// independently of whether the wrapper is currently visible.
-function logWrapper(log) {
-  return log?.closest('.protocol-log-wrap') || log
-}
-
 function clearLog() {
   const log = currentLog()
   if (!log) return
   log.innerHTML = ''
-  logWrapper(log).classList.add('hidden')
+  log.classList.add('hidden')
 }
 
 function showLog() {
   const log = currentLog()
-  if (!log) return
-  const wrap = logWrapper(log)
-  wrap.classList.remove('hidden')
-  // Re-open on show: a prior successful run may have auto-closed the
-  // details; a fresh start should drop the reader straight into the
-  // new steps without a click.
-  if (wrap.tagName === 'DETAILS') wrap.open = true
+  if (log) log.classList.remove('hidden')
 }
 
 
@@ -124,20 +111,39 @@ function isExpandable(content) {
 // Visual divider in the protocol log — used to group steps under
 // "Bootstrap", "Refresh", and "Authorize" so the reader can tell which
 // ceremony a given step belongs to.
+//
+// Each section is itself a <details> with its heading as the <summary>,
+// so the user can collapse an entire ceremony (e.g. the completed
+// bootstrap trail) to reclaim screen space. Subsequent addLogStep
+// calls append into whichever section is currently active.
 function addLogSection(title) {
   const log = currentLog()
   if (!log) return
   showLog()
-  const h = document.createElement('div')
-  h.className = 'log-section-heading'
-  h.textContent = title
-  log.appendChild(h)
+  const section = document.createElement('details')
+  section.className = 'log-section'
+  section.open = true
+  const summary = document.createElement('summary')
+  summary.className = 'log-section-heading'
+  summary.textContent = title
+  section.appendChild(summary)
+  log.appendChild(section)
+}
+
+// Return the most recently added section <details> that steps should
+// append into. Falls back to the log root if no section has been opened
+// yet (shouldn't happen on the main flows, but keeps us safe against
+// any call order edge case).
+function currentSection(log) {
+  const sections = log.querySelectorAll(':scope > details.log-section')
+  return sections[sections.length - 1] || log
 }
 
 function addLogStep(label, status, content) {
   const log = currentLog()
   if (!log) return null
   showLog()
+  const target = currentSection(log)
   const expandable = isExpandable(content)
   const step = expandable ? document.createElement('details') : document.createElement('div')
   step.className = `log-step section-group ${status}${expandable ? '' : ' log-step-static'}`
@@ -153,7 +159,7 @@ function addLogStep(label, status, content) {
   body.innerHTML = content
   step.appendChild(body)
 
-  log.appendChild(step)
+  target.appendChild(step)
   requestAnimationFrame(() => {
     step.scrollIntoView({ behavior: 'smooth', block: 'start' })
   })

@@ -2873,21 +2873,15 @@
   function currentLog() {
     return __activeLogContainer || document.getElementById("protocol-log");
   }
-  function logWrapper(log) {
-    return log?.closest(".protocol-log-wrap") || log;
-  }
   function clearLog() {
     const log = currentLog();
     if (!log) return;
     log.innerHTML = "";
-    logWrapper(log).classList.add("hidden");
+    log.classList.add("hidden");
   }
   function showLog() {
     const log = currentLog();
-    if (!log) return;
-    const wrap = logWrapper(log);
-    wrap.classList.remove("hidden");
-    if (wrap.tagName === "DETAILS") wrap.open = true;
+    if (log) log.classList.remove("hidden");
   }
   function statusIndicatorHtml(status) {
     if (status === "pending") {
@@ -2908,15 +2902,24 @@
     const log = currentLog();
     if (!log) return;
     showLog();
-    const h = document.createElement("div");
-    h.className = "log-section-heading";
-    h.textContent = title;
-    log.appendChild(h);
+    const section = document.createElement("details");
+    section.className = "log-section";
+    section.open = true;
+    const summary = document.createElement("summary");
+    summary.className = "log-section-heading";
+    summary.textContent = title;
+    section.appendChild(summary);
+    log.appendChild(section);
+  }
+  function currentSection(log) {
+    const sections = log.querySelectorAll(":scope > details.log-section");
+    return sections[sections.length - 1] || log;
   }
   function addLogStep(label, status, content) {
     const log = currentLog();
     if (!log) return null;
     showLog();
+    const target = currentSection(log);
     const expandable = isExpandable(content);
     const step = expandable ? document.createElement("details") : document.createElement("div");
     step.className = `log-step section-group ${status}${expandable ? "" : " log-step-static"}`;
@@ -2929,7 +2932,7 @@
     body.style.marginTop = "1rem";
     body.innerHTML = content;
     step.appendChild(body);
-    log.appendChild(step);
+    target.appendChild(step);
     requestAnimationFrame(() => {
       step.scrollIntoView({ behavior: "smooth", block: "start" });
     });
