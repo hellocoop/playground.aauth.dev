@@ -4021,6 +4021,7 @@ ${renderJSON(body)}`;
     } catch {
     }
   }
+  var _resumeAuthorizePolling = false;
   async function resumePendingAuthorize() {
     let saved;
     try {
@@ -4039,6 +4040,8 @@ ${renderJSON(body)}`;
       clearPendingAuthorize();
       return false;
     }
+    if (_resumeAuthorizePolling) return false;
+    _resumeAuthorizePolling = true;
     setActiveLog("authz-log");
     showLog();
     addLogSection(copy("sections.authorize_resumed"));
@@ -4070,7 +4073,17 @@ ${renderJSON(body)}`;
   } else {
     window.addEventListener("load", fireFallbackResume, { once: true });
   }
+  var _authzPollRunning = false;
   async function startAuthTokenPolling(pollUrl, baseUrl, interactionStep, pollStep) {
+    if (_authzPollRunning) return;
+    _authzPollRunning = true;
+    try {
+      await _startAuthTokenPollingImpl(pollUrl, baseUrl, interactionStep, pollStep);
+    } finally {
+      _authzPollRunning = false;
+    }
+  }
+  async function _startAuthTokenPollingImpl(pollUrl, baseUrl, interactionStep, pollStep) {
     const absolutePollUrl = new URL(pollUrl, baseUrl).href;
     const keyPair = window.aauthEphemeral.get();
     const agentToken = localStorage.getItem("aauth-agent-token");

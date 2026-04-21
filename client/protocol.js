@@ -1258,6 +1258,14 @@ function clearPendingAuthorize() {
   try { localStorage.removeItem(PENDING_AUTHZ_KEY) } catch {}
 }
 
+// Idempotency guard — app.js's init IIFE AND the window-load fallback
+// both call resumePendingAuthorize. Without this guard the second call
+// spawns a parallel polling loop whose signatures interleave with the
+// first loop's; the server sees requests whose `created` timestamp is
+// ~60s stale relative to "now", yielding 401 invalid_signature with
+// skew at the 60s tolerance boundary.
+let _resumeAuthorizePolling = false
+
 // Called on page load: if we have a persisted pending-authorize, resume
 // polling the PS for auth_token. Mirrors resumePendingInteraction for
 // bootstrap. Mounted after app.js init so ephemeral key + agent token
@@ -1279,6 +1287,9 @@ async function resumePendingAuthorize() {
     clearPendingAuthorize()
     return false
   }
+
+  if (_resumeAuthorizePolling) return false
+  _resumeAuthorizePolling = true
 
   // Resumed authorize — pick up the log inside the Authorization
   // Request fieldset where the original Continue click logged.
@@ -1322,7 +1333,26 @@ if (document.readyState === 'complete') {
 // and loop immediately on 202. Agent token + ephemeral key are snapshotted
 // once at start; the polling is signed with sig=jwt using them.
 
+// Module-level guard: at most one authz poll loop ever running. Callers
+// (runAuthorizationAgainstPS, resumePendingAuthorize) may each invoke us
+// independently; without this flag their loops interleave and one loop's
+// signature stamps trail the other's by 30s+, which the PS sees as stale
+// signatures and rejects with skew-at-tolerance-boundary 401s. Clear on
+// terminal status (200 / 403 / 408) so a follow-up authorization can
+// start fresh.
+let _authzPollRunning = false
+
 async function startAuthTokenPolling(pollUrl, baseUrl, interactionStep, pollStep) {
+  if (_authzPollRunning) return
+  _authzPollRunning = true
+  try {
+    await _startAuthTokenPollingImpl(pollUrl, baseUrl, interactionStep, pollStep)
+  } finally {
+    _authzPollRunning = false
+  }
+}
+
+async function _startAuthTokenPollingImpl(pollUrl, baseUrl, interactionStep, pollStep) {
   const absolutePollUrl = new URL(pollUrl, baseUrl).href
   const keyPair = window.aauthEphemeral.get()
   const agentToken = localStorage.getItem('aauth-agent-token')
