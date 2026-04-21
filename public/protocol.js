@@ -9,11 +9,11 @@
   var __commonJS = (cb, mod) => function __require() {
     return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
   };
-  var __copyProps = (to, from, except, desc) => {
+  var __copyProps = (to, from, except, desc2) => {
     if (from && typeof from === "object" || typeof from === "function") {
       for (let key of __getOwnPropNames(from))
         if (!__hasOwnProp.call(to, key) && key !== except)
-          __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+          __defProp(to, key, { get: () => from[key], enumerable: !(desc2 = __getOwnPropDesc(from, key)) || desc2.enumerable });
     }
     return to;
   };
@@ -706,13 +706,13 @@
       "use strict";
       var __createBinding = exports && exports.__createBinding || (Object.create ? (function(o, m, k, k2) {
         if (k2 === void 0) k2 = k;
-        var desc = Object.getOwnPropertyDescriptor(m, k);
-        if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-          desc = { enumerable: true, get: function() {
+        var desc2 = Object.getOwnPropertyDescriptor(m, k);
+        if (!desc2 || ("get" in desc2 ? !m.__esModule : desc2.writable || desc2.configurable)) {
+          desc2 = { enumerable: true, get: function() {
             return m[k];
           } };
         }
-        Object.defineProperty(o, k2, desc);
+        Object.defineProperty(o, k2, desc2);
       }) : (function(o, m, k, k2) {
         if (k2 === void 0) k2 = k;
         o[k2] = m[k];
@@ -2827,14 +2827,231 @@
   var qrcode_default = qrcode;
   var stringToBytes = qrcode.stringToBytes;
 
+  // public/log-copy.json
+  var log_copy_default = {
+    _about: "Single source of truth for every label + description rendered into the protocol log. Templates use {placeholder} for dynamic values substituted at runtime. All references to the agent server are spelled 'Agent Server' (not 'AS') to avoid conflation with 'Access Server' elsewhere in the AAuth protocol. Person Server is 'PS' in terse HTTP lines and 'Person Server' in prose.",
+    sections: {
+      bootstrap: "Bootstrap logs",
+      bootstrap_resumed: "Bootstrap logs (resumed)",
+      refresh: "Refresh logs",
+      authorize: "Authorization logs",
+      authorize_resumed: "Authorization logs (resumed)"
+    },
+    bootstrap: {
+      generate_ephemeral: {
+        label: "Agent: generate ephemeral key",
+        description: "The agent creates a fresh signing keypair for this session. The private half never leaves this device, so tokens issued later are useless to anyone else."
+      },
+      ps_discovery_request: {
+        label_template: "Agent \u2192 PS: GET {path}",
+        label_resolved_template: "Agent \u2192 PS: GET {path} \u2192 {status}",
+        label_error_network_template: "Agent \u2192 PS: GET {path} (network error)",
+        description: "Before the agent can talk to your Person Server, it asks which URLs to use for bootstrap and for sending you to consent."
+      },
+      ps_bootstrap_request: {
+        label_template: "Agent \u2192 PS: POST {path}",
+        label_resolved_template: "Agent \u2192 PS: POST {path} \u2192 {status}",
+        label_error_network_template: "Agent \u2192 PS: POST {path} (network error)",
+        label_error_unexpected_template: "Agent \u2192 PS: POST {path} \u2192 {status} (unexpected)",
+        description: "The agent tells your Person Server a new agent wants to connect. The PS replies with a URL to show you for approval, plus one the agent can check for your decision."
+      },
+      ps_pending_longpoll: {
+        label_template: "Agent \u2192 PS: GET {path} (long-poll)",
+        label_resolved_template: "Agent \u2192 PS: GET {path} \u2192 {status}",
+        label_resolved_no_token_template: "Agent \u2192 PS: GET {path} \u2192 200 (no bootstrap_token)",
+        description: "The agent keeps one request open while you decide, instead of polling every second. The PS answers the moment you approve or deny."
+      },
+      ps_consent_prompt: {
+        label: "User at PS: consent prompt",
+        description: "Your Person Server asks if you trust this agent. Approve here on this device, or scan the QR to approve on another.",
+        label_resolved_success: "User Consent Completed",
+        label_resolved_denied: "Consent Denied",
+        label_resolved_timed_out: "Consent Timed Out",
+        label_resolved_no_token: "Pending returned no bootstrap_token"
+      },
+      ps_bootstrap_token_received: {
+        label: "PS response: bootstrap_token received",
+        description: "Once you approve, the PS hands the agent a short-lived, single-use ticket proving you said yes \u2014 the agent redeems it with its own Agent Server next."
+      },
+      ps_pending_bad_response: {
+        label: "Bad /pending response",
+        description: "The PS replied in a shape the agent didn't expect, so the bootstrap can't continue."
+      },
+      ps_user_denied: {
+        label: "User denied consent",
+        description: ""
+      },
+      ps_interaction_timed_out: {
+        label: "Interaction timed out",
+        description: "You didn't approve or deny in time, so the PS gave up waiting."
+      },
+      agent_server_challenge_request: {
+        label_template: "Agent \u2192 Agent Server: POST {path}",
+        label_resolved_template: "Agent \u2192 Agent Server: POST {path} \u2192 {status}",
+        label_error_network_template: "Agent \u2192 Agent Server: POST {path} (network error)",
+        description: "The agent shows the PS's ticket to its Agent Server, which asks for a WebAuthn ceremony to confirm a real human is here."
+      },
+      webauthn_ceremony_failed: {
+        label: "WebAuthn ceremony failed",
+        description: "The WebAuthn step didn't complete \u2014 likely cancelled, timed out, or the credential wasn't accepted."
+      },
+      webauthn_ceremony_success: {
+        label: "User at Browser: WebAuthn ceremony",
+        description: "You complete the WebAuthn ceremony to sign the challenge, proving a human is present and the right credential is on this device."
+      },
+      agent_server_verify_request: {
+        label_template: "Agent \u2192 Agent Server: POST {path}",
+        label_resolved_template: "Agent \u2192 Agent Server: POST {path} \u2192 {status}",
+        label_error_network_template: "Agent \u2192 Agent Server: POST {path} (network error)",
+        description: "The Agent Server verifies your WebAuthn response and remembers the pairing of you, this PS, and this device \u2014 so future refreshes skip the PS."
+      }
+    },
+    bootstrap_resumed: {
+      ps_consent_prompt: {
+        label: "User at PS: consent prompt (resumed)",
+        description: "You returned mid-approval (page reload or redirect back from the PS). The agent picks up the same pending request instead of starting over."
+      }
+    },
+    refresh: {
+      cannot_refresh: {
+        label: "Cannot refresh",
+        description: "No saved key + token pair on this device, so there's nothing to refresh \u2014 a full bootstrap is needed."
+      },
+      stage_new_ephemeral: {
+        label: "Agent: stage new ephemeral key",
+        description: "The agent prepares a fresh keypair but doesn't use it yet. If the refresh fails for any reason, the old key and token still work."
+      },
+      agent_server_refresh_challenge_request: {
+        label_template: "Agent \u2192 Agent Server: POST {path}",
+        label_resolved_template: "Agent \u2192 Agent Server: POST {path} \u2192 {status}",
+        label_error_network_template: "Agent \u2192 Agent Server: POST {path} (network error)",
+        description: "The agent asks its Agent Server for a WebAuthn challenge, signed with the old key so the server knows it's the same agent as before."
+      },
+      webauthn_assertion_failed: {
+        label: "WebAuthn assertion failed",
+        description: "The WebAuthn step didn't complete \u2014 likely cancelled, timed out, or the credential wasn't accepted."
+      },
+      webauthn_ceremony_success: {
+        label: "User at Browser: WebAuthn ceremony",
+        description: "You complete the WebAuthn ceremony to sign the refresh challenge, proving the same human is still here on this device."
+      },
+      agent_server_refresh_verify_request: {
+        label_template: "Agent \u2192 Agent Server: POST {path}",
+        label_resolved_template: "Agent \u2192 Agent Server: POST {path} \u2192 {status}",
+        label_error_network_template: "Agent \u2192 Agent Server: POST {path} (network error)",
+        description: "The Agent Server verifies your response, swaps in the new key, and issues a fresh agent token \u2014 no trip back to your Person Server needed."
+      }
+    },
+    authorize: {
+      missing_context: {
+        label: "Missing agent_token or ephemeral key",
+        description: "The agent doesn't have an agent token or key yet \u2014 bootstrap has to finish first."
+      },
+      agent_server_authorize_request: {
+        label_template: "Agent \u2192 Agent Server: POST {path}",
+        label_resolved_template: "Agent \u2192 Agent Server: POST {path} \u2192 {status}",
+        label_error_network_template: "Agent \u2192 Agent Server: POST {path} (network error)",
+        description: "The agent asks its Agent Server for a resource token scoped to this PS and resource. The Agent Server signs it on the agent's behalf."
+      },
+      ps_token_request: {
+        label_template: "Agent \u2192 PS: POST {path}",
+        label_resolved_template: "Agent \u2192 PS: POST {path} \u2192 {status}",
+        label_error_network_template: "Agent \u2192 PS: POST {path} (network error)",
+        description: "The agent trades that resource token with your Person Server for an auth token. A 200 means you've already consented to this scope; 202 means the PS needs your approval for a new one."
+      },
+      ps_pending_longpoll: {
+        label_template: "Agent \u2192 PS: GET {path} (long-poll)",
+        label_resolved_template: "Agent \u2192 PS: GET {path} \u2192 {status}",
+        description: "If new consent is needed, the agent keeps one request open while you decide, instead of polling. The PS responds the moment you approve or deny."
+      },
+      ps_consent_prompt: {
+        label: "User at PS: consent prompt",
+        description: "Your Person Server asks if this agent may use the new scope. Approve here, or scan the QR to approve on another device.",
+        label_resolved_success: "Interaction Completed",
+        label_resolved_denied: "Interaction Denied",
+        label_resolved_timed_out: "Interaction Timed Out"
+      },
+      authorization_granted: {
+        label: "Authorization Granted",
+        description: ""
+      },
+      authorization_denied: {
+        label: "Authorization Denied",
+        description: ""
+      },
+      authorization_timed_out: {
+        label: "Authorization Timed Out",
+        description: ""
+      }
+    },
+    authorize_resumed: {
+      ps_consent_prompt: {
+        label: "User at PS: consent prompt (resumed)",
+        description: "You returned mid-approval for a scope upgrade. The agent picks up the same pending request instead of starting over."
+      }
+    },
+    demo_api: {
+      missing_key: {
+        label: "Demo API Call Failed",
+        description: "No signing key on this device \u2014 the demo call can't be signed, so it won't go out."
+      },
+      request: {
+        label_template: "GET {path}",
+        label_resolved_template: "GET {path} \u2192 {status}",
+        label_error_network_template: "GET {path} (network error)",
+        description: "The agent calls the resource's demo endpoint, signing the HTTP request with its private key and attaching the auth token. The server checks the signature matches the token, then checks the token's scope covers this endpoint."
+      },
+      success: {
+        label: "Demo API Called",
+        description: ""
+      },
+      failure: {
+        label: "Demo API Call Failed",
+        description: ""
+      }
+    },
+    errors: {
+      unhandled: {
+        label: "Unhandled error",
+        description: "Something went wrong that the flow wasn't expecting \u2014 check the console for details."
+      }
+    },
+    ui: {
+      another_request_button: "Another Authorization Request",
+      approve_at_ps: {
+        bootstrap_heading: "Approve this agent",
+        authorize_heading: "Approve this authorization request",
+        continue_label: "Continue at your Person Server to approve this agent",
+        or_another_device: "OR scan QR code",
+        copy_link_default: "Copy link",
+        copy_link_copied: "Copied!"
+      }
+    }
+  };
+
   // client/protocol.js
+  function copy(path) {
+    return path.split(".").reduce((o, k) => o == null ? void 0 : o[k], log_copy_default);
+  }
+  function fmt(template, vars = {}) {
+    if (!template) return "";
+    let out = template;
+    for (const [k, v] of Object.entries(vars)) {
+      out = out.split(`{${k}}`).join(String(v));
+    }
+    return out;
+  }
+  function desc(key) {
+    const d = copy(`${key}.description`);
+    return d ? `<p>${d}</p>` : "";
+  }
   window.addEventListener("unhandledrejection", (ev) => {
     try {
       const msg = ev?.reason?.stack || ev?.reason?.message || String(ev?.reason);
       console.error("[aauth] unhandled rejection:", msg);
       showLog();
       addLogStep(
-        "Unhandled error",
+        copy("errors.unhandled.label"),
         "error",
         `<p style="color: var(--error); white-space: pre-wrap;">${escapeHtml(msg)}</p>`
       );
@@ -2954,7 +3171,7 @@
     body.insertAdjacentHTML("beforeend", html);
   }
   function anotherRequestButton() {
-    return `<div class="log-actions"><button type="button" class="btn-outline js-scroll-authz">Another Authorization Request</button></div>`;
+    return `<div class="log-actions"><button type="button" class="btn-outline js-scroll-authz">${escapeHtml(copy("ui.another_request_button"))}</button></div>`;
   }
   function tokenWrap(innerHtml, extraClass = "") {
     const id = nextCopyId();
@@ -3037,32 +3254,32 @@ ${renderJSON(body)}`;
   }
   async function runBootstrap(psUrl, hints) {
     const agentServerOrigin = window.location.origin;
-    addLogSection("Bootstrap logs");
+    addLogSection(copy("sections.bootstrap"));
     const { keyPair, publicJwk } = await window.aauthEphemeral.rotate();
     addLogStep(
-      "Agent: generate ephemeral key",
+      copy("bootstrap.generate_ephemeral.label"),
       "success",
-      `<p>Agent generates an Ed25519 keypair \u2014 private stays local, public binds the issued token to this agent so only the private-key holder can use it.</p>` + tokenWrap(renderJSON({ kty: publicJwk.kty, crv: publicJwk.crv, x: publicJwk.x }))
+      desc("bootstrap.generate_ephemeral") + tokenWrap(renderJSON({ kty: publicJwk.kty, crv: publicJwk.crv, x: publicJwk.x }))
     );
     const psMetadataUrl = `${psUrl.replace(/\/$/, "")}/.well-known/aauth-person.json`;
     const psMetaStep = addLogStep(
-      `Agent \u2192 PS: GET ${new URL(psMetadataUrl).pathname}`,
+      fmt(copy("bootstrap.ps_discovery_request.label_template"), { path: new URL(psMetadataUrl).pathname }),
       "pending",
-      `<p>Discovers the PS's <code>bootstrap_endpoint</code> + <code>interaction_endpoint</code> \u2014 needed before the agent can call anything else on the PS.</p>` + formatRequest("GET", psMetadataUrl, null, null)
+      desc("bootstrap.ps_discovery_request") + formatRequest("GET", psMetadataUrl, null, null)
     );
     let psMetadata;
     try {
       const psMetaRes = await fetch(psMetadataUrl);
       psMetadata = await psMetaRes.json();
       if (!psMetaRes.ok) {
-        resolveStep(psMetaStep, "error", `Agent \u2192 PS: GET ${new URL(psMetadataUrl).pathname} \u2192 ${psMetaRes.status}`);
+        resolveStep(psMetaStep, "error", fmt(copy("bootstrap.ps_discovery_request.label_resolved_template"), { path: new URL(psMetadataUrl).pathname, status: psMetaRes.status }));
         appendStepBody(psMetaStep, formatResponse(psMetaRes.status, null, psMetadata));
         return false;
       }
-      resolveStep(psMetaStep, "success", `Agent \u2192 PS: GET ${new URL(psMetadataUrl).pathname} \u2192 200`);
+      resolveStep(psMetaStep, "success", fmt(copy("bootstrap.ps_discovery_request.label_resolved_template"), { path: new URL(psMetadataUrl).pathname, status: 200 }));
       appendStepBody(psMetaStep, formatResponse(200, null, psMetadata));
     } catch (err) {
-      resolveStep(psMetaStep, "error", `Agent \u2192 PS: GET ${new URL(psMetadataUrl).pathname} (network error)`);
+      resolveStep(psMetaStep, "error", fmt(copy("bootstrap.ps_discovery_request.label_error_network_template"), { path: new URL(psMetadataUrl).pathname }));
       appendStepBody(psMetaStep, `<p style="color: var(--error)">${escapeHtml(err.message)}</p>`);
       return false;
     }
@@ -3077,9 +3294,9 @@ ${renderJSON(body)}`;
       ...hints
     };
     const psBootReqStep = addLogStep(
-      `Agent \u2192 PS: POST ${new URL(bootstrapEndpoint).pathname}`,
+      fmt(copy("bootstrap.ps_bootstrap_request.label_template"), { path: new URL(bootstrapEndpoint).pathname }),
       "pending",
-      `<p>Agent starts the ceremony at the PS; 202 returns a pending URL to poll + a consent URL to show the user.</p>` + formatRequest("POST", bootstrapEndpoint, {
+      desc("bootstrap.ps_bootstrap_request") + formatRequest("POST", bootstrapEndpoint, {
         "Content-Type": "application/json",
         "Signature-Input": 'sig=("@method" "@authority" "@path" "content-type" "signature-key");created=...',
         "Signature": "sig=:...:",
@@ -3115,23 +3332,23 @@ ${renderJSON(body)}`;
         url: fromHeader.url || psMetadata.interaction_endpoint || psBootBody?.interaction_url
       };
       const reqStatus = psBootRes.ok ? "success" : "error";
-      resolveStep(psBootReqStep, reqStatus, `Agent \u2192 PS: POST ${new URL(bootstrapEndpoint).pathname} \u2192 ${psBootRes.status}`);
+      resolveStep(psBootReqStep, reqStatus, fmt(copy("bootstrap.ps_bootstrap_request.label_resolved_template"), { path: new URL(bootstrapEndpoint).pathname, status: psBootRes.status }));
       appendStepBody(psBootReqStep, formatResponse(psBootRes.status, responseHeaders, psBootBody));
     } catch (err) {
-      resolveStep(psBootReqStep, "error", `Agent \u2192 PS: POST ${new URL(bootstrapEndpoint).pathname} (network error)`);
+      resolveStep(psBootReqStep, "error", fmt(copy("bootstrap.ps_bootstrap_request.label_error_network_template"), { path: new URL(bootstrapEndpoint).pathname }));
       appendStepBody(psBootReqStep, `<p style="color: var(--error)">${escapeHtml(err.message)}</p>`);
       return false;
     }
     if (psBootRes.status !== 202 || !pollUrl) {
-      resolveStep(psBootReqStep, "error", `Agent \u2192 PS: POST ${new URL(bootstrapEndpoint).pathname} \u2192 ${psBootRes.status} (unexpected)`);
+      resolveStep(psBootReqStep, "error", fmt(copy("bootstrap.ps_bootstrap_request.label_error_unexpected_template"), { path: new URL(bootstrapEndpoint).pathname, status: psBootRes.status }));
       return false;
     }
     const absolutePollUrl = new URL(pollUrl, bootstrapEndpoint).href;
     const pollPath = new URL(absolutePollUrl).pathname;
     const pollStep = addLogStep(
-      `Agent \u2192 PS: GET ${pollPath} (long-poll)`,
+      fmt(copy("bootstrap.ps_pending_longpoll.label_template"), { path: pollPath }),
       "pending",
-      `<p>Agent waits for consent; <code>Prefer: wait=30</code> holds the connection open so the PS can push state immediately instead of tight polling.</p>` + formatRequest("GET", absolutePollUrl, {
+      desc("bootstrap.ps_pending_longpoll") + formatRequest("GET", absolutePollUrl, {
         "Prefer": "wait=30",
         "Signature-Input": 'sig=("@method" "@authority" "@path" "signature-key");created=...',
         "Signature": "sig=:...:",
@@ -3139,9 +3356,9 @@ ${renderJSON(body)}`;
       }, null)
     );
     const interactionStep = addLogStep(
-      "User at PS: consent prompt",
+      copy("bootstrap.ps_consent_prompt.label"),
       "pending",
-      `<p>User approves (or denies) at the PS via redirect or QR \u2014 their decision resolves the long-poll above.</p>` + renderInteraction(interactionParams, absolutePollUrl)
+      desc("bootstrap.ps_consent_prompt") + renderInteraction(interactionParams, absolutePollUrl)
     );
     savePendingBootstrap({
       pollUrl: absolutePollUrl,
@@ -3152,9 +3369,9 @@ ${renderJSON(body)}`;
     trace("pollForBootstrapToken returned", pending ? { hasToken: !!pending.bootstrap_token } : null);
     if (!pending) return false;
     addLogStep(
-      "PS response: bootstrap_token received",
+      copy("bootstrap.ps_bootstrap_token_received.label"),
       "success",
-      `<p>Signed JWT cnf-bound to the agent's ephemeral; single-use ticket the agent hands to its own agent server next.</p>` + formatToken("Bootstrap Token (aa-bootstrap+jwt)", pending.bootstrap_token, decodeJWTPayloadBrowser(pending.bootstrap_token))
+      desc("bootstrap.ps_bootstrap_token_received") + formatToken("Bootstrap Token (aa-bootstrap+jwt)", pending.bootstrap_token, decodeJWTPayloadBrowser(pending.bootstrap_token))
     );
     return await completeAgentServerBootstrap(pending.bootstrap_token, publicJwk, keyPair, { psUrl });
   }
@@ -3162,7 +3379,7 @@ ${renderJSON(body)}`;
     const pollPath = new URL(absolutePollUrl).pathname;
     if (!pollStep) {
       pollStep = addLogStep(
-        `Agent \u2192 PS: GET ${pollPath} (long-poll)`,
+        fmt(copy("bootstrap.ps_pending_longpoll.label_template"), { path: pollPath }),
         "pending",
         `<p>Agent waits for consent; <code>Prefer: wait=30</code> holds the connection open so the PS can push state immediately instead of tight polling.</p>` + formatRequest("GET", absolutePollUrl, {
           "Prefer": "wait=30",
@@ -3189,22 +3406,22 @@ ${renderJSON(body)}`;
           const token = body?.bootstrap_token;
           if (!token) {
             trace("poll 200 missing bootstrap_token", body);
-            resolveStep(pollStep, "error", `Agent \u2192 PS: GET ${pollPath} \u2192 200 (no bootstrap_token)`);
+            resolveStep(pollStep, "error", fmt(copy("bootstrap.ps_pending_longpoll.label_resolved_no_token_template"), { path: pollPath }));
             resolveStep(interactionStep, "error", "Pending returned no bootstrap_token");
-            addLogStep("Bad /pending response", "error", formatResponse(200, null, body));
+            addLogStep(copy("bootstrap.ps_pending_bad_response.label"), "error", desc("bootstrap.ps_pending_bad_response") + formatResponse(200, null, body));
             return null;
           }
           trace("poll token extracted, length", token.length);
-          resolveStep(pollStep, "success", `Agent \u2192 PS: GET ${pollPath} \u2192 200`);
+          resolveStep(pollStep, "success", fmt(copy("bootstrap.ps_pending_longpoll.label_resolved_template"), { path: pollPath, status: 200 }));
           resolveStep(interactionStep, "success", "User Consent Completed");
           return { bootstrap_token: token, raw: body };
         }
         if (res.status === 403) {
           clearPendingBootstrap();
-          resolveStep(pollStep, "error", `Agent \u2192 PS: GET ${pollPath} \u2192 403`);
+          resolveStep(pollStep, "error", fmt(copy("bootstrap.ps_pending_longpoll.label_resolved_template"), { path: pollPath, status: 403 }));
           resolveStep(interactionStep, "error", "Consent Denied");
           addLogStep(
-            "User denied consent",
+            copy("bootstrap.ps_user_denied.label"),
             "error",
             formatResponse(403, null, await res.json().catch(() => null)) + anotherRequestButton()
           );
@@ -3212,12 +3429,12 @@ ${renderJSON(body)}`;
         }
         if (res.status === 408) {
           clearPendingBootstrap();
-          resolveStep(pollStep, "error", `Agent \u2192 PS: GET ${pollPath} \u2192 408`);
+          resolveStep(pollStep, "error", fmt(copy("bootstrap.ps_pending_longpoll.label_resolved_template"), { path: pollPath, status: 408 }));
           resolveStep(interactionStep, "error", "Consent Timed Out");
           addLogStep(
-            "Interaction timed out",
+            copy("bootstrap.ps_interaction_timed_out.label"),
             "error",
-            formatResponse(408, null, null) + anotherRequestButton()
+            desc("bootstrap.ps_interaction_timed_out") + formatResponse(408, null, null) + anotherRequestButton()
           );
           return null;
         }
@@ -3234,9 +3451,9 @@ ${renderJSON(body)}`;
     const challengeEndpoint = `${window.location.origin}/bootstrap/challenge`;
     const challengeBody = { bootstrap_token: bootstrapToken, ephemeral_jwk: publicJwk, agent_local: agentLocal };
     const challengeReqStep = addLogStep(
-      `Agent \u2192 Agent Server: POST ${new URL(challengeEndpoint).pathname}`,
+      fmt(copy("bootstrap.agent_server_challenge_request.label_template"), { path: new URL(challengeEndpoint).pathname }),
       "pending",
-      `<p>Agent server verifies the PS signature on bootstrap_token and issues a WebAuthn challenge \u2014 gates who can mint agent_token.</p>` + formatRequest("POST", challengeEndpoint, {
+      desc("bootstrap.agent_server_challenge_request") + formatRequest("POST", challengeEndpoint, {
         "Content-Type": "application/json",
         "Signature-Input": 'sig=("@method" "@authority" "@path" "content-type" "signature-key");created=...',
         "Signature": "sig=:...:",
@@ -3260,14 +3477,14 @@ ${renderJSON(body)}`;
       });
       challengeData = await res.json();
       if (!res.ok) {
-        resolveStep(challengeReqStep, "error", `Agent \u2192 Agent Server: POST /bootstrap/challenge \u2192 ${res.status}`);
+        resolveStep(challengeReqStep, "error", fmt(copy("bootstrap.agent_server_challenge_request.label_resolved_template"), { path: "/bootstrap/challenge", status: res.status }));
         appendStepBody(challengeReqStep, formatResponse(res.status, null, challengeData));
         return false;
       }
-      resolveStep(challengeReqStep, "success", `Agent \u2192 Agent Server: POST /bootstrap/challenge \u2192 200`);
+      resolveStep(challengeReqStep, "success", fmt(copy("bootstrap.agent_server_challenge_request.label_resolved_template"), { path: "/bootstrap/challenge", status: 200 }));
       appendStepBody(challengeReqStep, formatResponse(200, null, challengeData));
     } catch (err) {
-      resolveStep(challengeReqStep, "error", "Agent \u2192 Agent Server: POST /bootstrap/challenge (network error)");
+      resolveStep(challengeReqStep, "error", fmt(copy("bootstrap.agent_server_challenge_request.label_error_network_template"), { path: "/bootstrap/challenge" }));
       appendStepBody(challengeReqStep, `<p style="color: var(--error)">${escapeHtml(err.message)}</p>`);
       return false;
     }
@@ -3285,16 +3502,16 @@ ${renderJSON(body)}`;
       }
     } catch (err) {
       addLogStep(
-        "WebAuthn ceremony failed",
+        copy("bootstrap.webauthn_ceremony_failed.label"),
         "error",
-        `<p style="color: var(--error)">${escapeHtml(err.message)}</p>`
+        desc("bootstrap.webauthn_ceremony_failed") + `<p style="color: var(--error)">${escapeHtml(err.message)}</p>`
       );
       return false;
     }
     addLogStep(
-      "User at Browser: WebAuthn ceremony",
+      copy("bootstrap.webauthn_ceremony_success.label"),
       "success",
-      `<p>User taps the passkey / platform authenticator to sign the agent server's challenge \u2014 proves a human is present and the correct credential is on this device.</p>`
+      desc("bootstrap.webauthn_ceremony_success")
     );
     const verifyEndpoint = `${window.location.origin}/bootstrap/verify`;
     const verifyBody = {
@@ -3302,9 +3519,9 @@ ${renderJSON(body)}`;
       webauthn_response: webauthnResponse
     };
     const verifyStep = addLogStep(
-      `Agent \u2192 Agent Server: POST ${new URL(verifyEndpoint).pathname}`,
+      fmt(copy("bootstrap.agent_server_verify_request.label_template"), { path: new URL(verifyEndpoint).pathname }),
       "pending",
-      `<p>Agent server verifies the WebAuthn response, records the (PS, user) binding so future refreshes skip the PS round-trip.</p>` + formatRequest("POST", verifyEndpoint, {
+      desc("bootstrap.agent_server_verify_request") + formatRequest("POST", verifyEndpoint, {
         "Content-Type": "application/json",
         "Signature-Input": 'sig=("@method" "@authority" "@path" "content-type" "signature-key");created=...',
         "Signature": "sig=:...:",
@@ -3327,13 +3544,13 @@ ${renderJSON(body)}`;
       });
       result = await res.json();
       if (!res.ok) {
-        resolveStep(verifyStep, "error", `Agent \u2192 Agent Server: POST /bootstrap/verify \u2192 ${res.status}`);
+        resolveStep(verifyStep, "error", fmt(copy("bootstrap.agent_server_verify_request.label_resolved_template"), { path: "/bootstrap/verify", status: res.status }));
         appendStepBody(verifyStep, formatResponse(res.status, null, result));
         return false;
       }
-      resolveStep(verifyStep, "success", `Agent \u2192 Agent Server: POST /bootstrap/verify \u2192 200`);
+      resolveStep(verifyStep, "success", fmt(copy("bootstrap.agent_server_verify_request.label_resolved_template"), { path: "/bootstrap/verify", status: 200 }));
     } catch (err) {
-      resolveStep(verifyStep, "error", "Agent \u2192 Agent Server: POST /bootstrap/verify (network error)");
+      resolveStep(verifyStep, "error", fmt(copy("bootstrap.agent_server_verify_request.label_error_network_template"), { path: "/bootstrap/verify" }));
       appendStepBody(verifyStep, `<p style="color: var(--error)">${escapeHtml(err.message)}</p>`);
       return false;
     }
@@ -3363,26 +3580,26 @@ ${renderJSON(body)}`;
     const agentToken = localStorage.getItem("aauth-agent-token");
     if (!oldKeyPair || !agentToken) {
       addLogStep(
-        "Cannot refresh",
+        copy("refresh.cannot_refresh.label"),
         "error",
-        "<p>No ephemeral key + agent_token pair present locally. Full bootstrap required.</p>"
+        desc("refresh.cannot_refresh")
       );
       return null;
     }
-    addLogSection("Refresh logs");
+    addLogSection(copy("sections.refresh"));
     const { publicJwk: newPublicJwk } = await window.aauthEphemeral.stage();
     addLogStep(
-      "Agent: stage new ephemeral key",
+      copy("refresh.stage_new_ephemeral.label"),
       "success",
-      `<p>Agent generates a fresh keypair but holds it staged; /refresh is still signed with the old key (matches current agent_token.cnf). The new key is committed only after verify succeeds so a failed refresh leaves the old agent_token usable.</p>` + tokenWrap(renderJSON({ kty: newPublicJwk.kty, crv: newPublicJwk.crv, x: newPublicJwk.x }))
+      desc("refresh.stage_new_ephemeral") + tokenWrap(renderJSON({ kty: newPublicJwk.kty, crv: newPublicJwk.crv, x: newPublicJwk.x }))
     );
     const oldSigningJwk = await crypto.subtle.exportKey("jwk", oldKeyPair.publicKey);
     const refreshChallengeEndpoint = `${window.location.origin}/refresh/challenge`;
     const refreshChallengeBody = { binding_key: bindingKey, new_ephemeral_jwk: newPublicJwk };
     const reqStep = addLogStep(
-      `Agent \u2192 Agent Server: POST ${new URL(refreshChallengeEndpoint).pathname}`,
+      fmt(copy("refresh.agent_server_refresh_challenge_request.label_template"), { path: new URL(refreshChallengeEndpoint).pathname }),
       "pending",
-      `<p>Agent asks its own agent server for a WebAuthn challenge against the stored binding; signed with the old ephemeral so the AS can prove the caller is the current cnf-holder.</p>` + formatRequest("POST", refreshChallengeEndpoint, {
+      desc("refresh.agent_server_refresh_challenge_request") + formatRequest("POST", refreshChallengeEndpoint, {
         "Content-Type": "application/json",
         "Signature-Input": 'sig=("@method" "@authority" "@path" "content-type" "signature-key");created=...',
         "Signature": "sig=:...:",
@@ -3402,16 +3619,16 @@ ${renderJSON(body)}`;
       });
       challengeData = await res.json();
       if (!res.ok) {
-        resolveStep(reqStep, "error", `Agent \u2192 Agent Server: POST /refresh/challenge \u2192 ${res.status}`);
+        resolveStep(reqStep, "error", fmt(copy("refresh.agent_server_refresh_challenge_request.label_resolved_template"), { path: "/refresh/challenge", status: res.status }));
         appendStepBody(reqStep, formatResponse(res.status, null, challengeData));
         window.aauthEphemeral.discardStaged();
         window.aauthBinding.clearBinding();
         return null;
       }
-      resolveStep(reqStep, "success", `Agent \u2192 Agent Server: POST /refresh/challenge \u2192 200`);
+      resolveStep(reqStep, "success", fmt(copy("refresh.agent_server_refresh_challenge_request.label_resolved_template"), { path: "/refresh/challenge", status: 200 }));
       appendStepBody(reqStep, formatResponse(200, null, challengeData));
     } catch (err) {
-      resolveStep(reqStep, "error", "Agent \u2192 Agent Server: POST /refresh/challenge (network error)");
+      resolveStep(reqStep, "error", fmt(copy("refresh.agent_server_refresh_challenge_request.label_error_network_template"), { path: "/refresh/challenge" }));
       appendStepBody(reqStep, `<p style="color: var(--error)">${escapeHtml(err.message)}</p>`);
       window.aauthEphemeral.discardStaged();
       return null;
@@ -3423,17 +3640,17 @@ ${renderJSON(body)}`;
       webauthnResponse = window.aauthWebAuthn.serializeAssertion(cred);
     } catch (err) {
       addLogStep(
-        "WebAuthn assertion failed",
+        copy("refresh.webauthn_assertion_failed.label"),
         "error",
-        `<p style="color: var(--error)">${escapeHtml(err.message)}</p>`
+        desc("refresh.webauthn_assertion_failed") + `<p style="color: var(--error)">${escapeHtml(err.message)}</p>`
       );
       window.aauthEphemeral.discardStaged();
       return null;
     }
     addLogStep(
-      "User at Browser: WebAuthn ceremony",
+      copy("refresh.webauthn_ceremony_success.label"),
       "success",
-      `<p>User taps the passkey to sign the AS's refresh challenge \u2014 proves the same human is still present on this device.</p>`
+      desc("refresh.webauthn_ceremony_success")
     );
     const refreshVerifyEndpoint = `${window.location.origin}/refresh/verify`;
     const refreshVerifyBody = {
@@ -3441,9 +3658,9 @@ ${renderJSON(body)}`;
       webauthn_response: webauthnResponse
     };
     const verifyStep = addLogStep(
-      `Agent \u2192 Agent Server: POST ${new URL(refreshVerifyEndpoint).pathname}`,
+      fmt(copy("refresh.agent_server_refresh_verify_request.label_template"), { path: new URL(refreshVerifyEndpoint).pathname }),
       "pending",
-      `<p>Agent returns the signed WebAuthn assertion; AS verifies it, promotes the staged key to cnf-bound for the new agent_token, and mints fresh tokens.</p>` + formatRequest("POST", refreshVerifyEndpoint, {
+      desc("refresh.agent_server_refresh_verify_request") + formatRequest("POST", refreshVerifyEndpoint, {
         "Content-Type": "application/json",
         "Signature-Input": 'sig=("@method" "@authority" "@path" "content-type" "signature-key");created=...',
         "Signature": "sig=:...:",
@@ -3466,14 +3683,14 @@ ${renderJSON(body)}`;
       });
       result = await res.json();
       if (!res.ok) {
-        resolveStep(verifyStep, "error", `Agent \u2192 Agent Server: POST /refresh/verify \u2192 ${res.status}`);
+        resolveStep(verifyStep, "error", fmt(copy("refresh.agent_server_refresh_verify_request.label_resolved_template"), { path: "/refresh/verify", status: res.status }));
         appendStepBody(verifyStep, formatResponse(res.status, null, result));
         window.aauthEphemeral.discardStaged();
         return null;
       }
-      resolveStep(verifyStep, "success", `Agent \u2192 Agent Server: POST /refresh/verify \u2192 200`);
+      resolveStep(verifyStep, "success", fmt(copy("refresh.agent_server_refresh_verify_request.label_resolved_template"), { path: "/refresh/verify", status: 200 }));
     } catch (err) {
-      resolveStep(verifyStep, "error", "Agent \u2192 Agent Server: POST /refresh/verify (network error)");
+      resolveStep(verifyStep, "error", fmt(copy("refresh.agent_server_refresh_verify_request.label_error_network_template"), { path: "/refresh/verify" }));
       appendStepBody(verifyStep, `<p style="color: var(--error)">${escapeHtml(err.message)}</p>`);
       window.aauthEphemeral.discardStaged();
       return null;
@@ -3539,20 +3756,20 @@ ${renderJSON(body)}`;
     const agentToken = localStorage.getItem("aauth-agent-token");
     if (!agentToken || !keyPair) {
       addLogStep(
-        "Missing agent_token or ephemeral key",
+        copy("authorize.missing_context.label"),
         "error",
-        "<p>Bootstrap must complete before authorization.</p>"
+        desc("authorize.missing_context")
       );
       return;
     }
-    addLogSection("Authorization logs");
+    addLogSection(copy("sections.authorize"));
     const authzEndpoint = `${window.location.origin}/authorize`;
     const authzBody = { ps: psUrl, scope };
     const signingJwk = await crypto.subtle.exportKey("jwk", keyPair.publicKey);
     const authzReqStep = addLogStep(
-      `Agent \u2192 Agent Server: POST ${new URL(authzEndpoint).pathname}`,
+      fmt(copy("authorize.agent_server_authorize_request.label_template"), { path: new URL(authzEndpoint).pathname }),
       "pending",
-      `<p>Agent asks its own agent server for a resource_token scoped to this PS + resource; signed with the agent's ephemeral and carrying the agent_token as authentication.</p>` + formatRequest("POST", authzEndpoint, {
+      desc("authorize.agent_server_authorize_request") + formatRequest("POST", authzEndpoint, {
         "Content-Type": "application/json",
         "Signature-Input": 'sig=("@method" "@authority" "@path" "content-type" "signature-key");created=...',
         "Signature": "sig=:...:",
@@ -3572,13 +3789,13 @@ ${renderJSON(body)}`;
       });
       authzData = await res.json();
       if (!res.ok) {
-        resolveStep(authzReqStep, "error", `Agent \u2192 Agent Server: POST /authorize \u2192 ${res.status}`);
+        resolveStep(authzReqStep, "error", fmt(copy("authorize.agent_server_authorize_request.label_resolved_template"), { path: "/authorize", status: res.status }));
         appendStepBody(authzReqStep, formatResponse(res.status, null, authzData));
         return;
       }
-      resolveStep(authzReqStep, "success", `Agent \u2192 Agent Server: POST /authorize \u2192 200`);
+      resolveStep(authzReqStep, "success", fmt(copy("authorize.agent_server_authorize_request.label_resolved_template"), { path: "/authorize", status: 200 }));
     } catch (err) {
-      resolveStep(authzReqStep, "error", "Agent \u2192 Agent Server: POST /authorize (network error)");
+      resolveStep(authzReqStep, "error", fmt(copy("authorize.agent_server_authorize_request.label_error_network_template"), { path: "/authorize" }));
       appendStepBody(authzReqStep, `<p style="color: var(--error)">${escapeHtml(err.message)}</p>`);
       return;
     }
@@ -3596,9 +3813,9 @@ ${renderJSON(body)}`;
       ...hints
     };
     const psReqStep = addLogStep(
-      `Agent \u2192 PS: POST ${new URL(tokenEndpoint).pathname}`,
+      fmt(copy("authorize.ps_token_request.label_template"), { path: new URL(tokenEndpoint).pathname }),
       "pending",
-      `<p>Agent trades the resource_token with the PS for a scoped auth_token. 200 = scopes already consented; 202 = user consent needed for a scope upgrade.</p>` + formatRequest("POST", tokenEndpoint, {
+      desc("authorize.ps_token_request") + formatRequest("POST", tokenEndpoint, {
         "Content-Type": "application/json",
         "Signature-Input": 'sig=("@method" "@authority" "@path" "signature-key");created=...',
         "Signature": "sig=:...:",
@@ -3628,7 +3845,7 @@ ${renderJSON(body)}`;
         psBody = null;
       }
       const psPath = new URL(tokenEndpoint).pathname;
-      resolveStep(psReqStep, psRes.ok ? "success" : "error", `Agent \u2192 PS: POST ${psPath} \u2192 ${psRes.status}`);
+      resolveStep(psReqStep, psRes.ok ? "success" : "error", fmt(copy("authorize.ps_token_request.label_resolved_template"), { path: psPath, status: psRes.status }));
       if (psRes.status === 200 && psBody?.auth_token) {
         appendStepBody(psReqStep, formatResponse(psRes.status, responseHeaders, psBody));
         appendStepBody(psReqStep, formatAuthToken(psBody.auth_token) + anotherRequestButton());
@@ -3647,9 +3864,9 @@ ${renderJSON(body)}`;
           const absolutePollUrl = new URL(pollUrl, tokenEndpoint).href;
           const agentTokenForLog = localStorage.getItem("aauth-agent-token");
           pollStep = addLogStep(
-            `Agent \u2192 PS: GET ${new URL(absolutePollUrl).pathname} (long-poll)`,
+            fmt(copy("authorize.ps_pending_longpoll.label_template"), { path: new URL(absolutePollUrl).pathname }),
             "pending",
-            `<p>Agent long-polls the PS pending URL for the auth_token. <code>Prefer: wait=30</code> asks the PS to hold the request for up to 30s; on 202 the client loops immediately.</p>` + formatRequest("GET", absolutePollUrl, {
+            desc("authorize.ps_pending_longpoll") + formatRequest("GET", absolutePollUrl, {
               "Prefer": "wait=30",
               "Signature-Input": 'sig=("@method" "@authority" "@path" "signature-key");created=...',
               "Signature": "sig=:...:",
@@ -3658,9 +3875,9 @@ ${renderJSON(body)}`;
           );
         }
         const interactionStep = addLogStep(
-          "User at PS: consent prompt",
+          copy("authorize.ps_consent_prompt.label"),
           "pending",
-          `<p>User approves the scope upgrade at the PS (redirect or QR) \u2014 the long-poll above resolves once they decide.</p>` + renderInteraction(interaction, pollUrl, "authorize")
+          desc("authorize.ps_consent_prompt") + renderInteraction(interaction, pollUrl, "authorize")
         );
         if (pollUrl) {
           savePendingAuthorize({
@@ -3675,7 +3892,7 @@ ${renderJSON(body)}`;
         appendStepBody(psReqStep, formatResponse(psRes.status, responseHeaders, psBody));
       }
     } catch (err) {
-      resolveStep(psReqStep, "error", `Agent \u2192 PS: POST ${new URL(tokenEndpoint).pathname} (network error)`);
+      resolveStep(psReqStep, "error", fmt(copy("authorize.ps_token_request.label_error_network_template"), { path: new URL(tokenEndpoint).pathname }));
       appendStepBody(psReqStep, `<p style="color: var(--error)">${escapeHtml(err.message)}</p>`);
     }
   }
@@ -3699,7 +3916,7 @@ ${renderJSON(body)}`;
       if (!interaction.code) missing.push("code");
       return `<p style="color: var(--muted);">Interaction required but missing: ${escapeHtml(missing.join(", "))}.</p>`;
     }
-    const heading = kind === "authorize" ? "Approve this authorization request" : "Approve this agent";
+    const heading = kind === "authorize" ? copy("ui.approve_at_ps.authorize_heading") : copy("ui.approve_at_ps.bootstrap_heading");
     const callbackUrl = `${window.location.origin}/`;
     const sameDeviceUrl = `${interaction.url}?code=${encodeURIComponent(interaction.code)}&callback=${encodeURIComponent(callbackUrl)}`;
     const qrUrl = `${interaction.url}?code=${encodeURIComponent(interaction.code)}`;
@@ -3711,7 +3928,7 @@ ${renderJSON(body)}`;
       <div class="interaction-actions">
         <a class="hello-btn hello-btn-black-on-dark" href="${escapeHtml(sameDeviceUrl)}">\u014D&nbsp;&nbsp;&nbsp;Continue with Hell\u014D</a>
       </div>
-      <div class="interaction-or"><span>OR scan QR code</span></div>
+      <div class="interaction-or"><span>${escapeHtml(copy("ui.approve_at_ps.or_another_device"))}</span></div>
       <div class="qr-code" id="${qrId}"></div>
       <div class="interaction-url-row">
         <button class="copy-btn copy-link-text" type="button" data-copy="${escapeHtml(qrUrl)}">
@@ -3773,19 +3990,19 @@ ${renderJSON(body)}`;
     _resumeInteractionPolling = true;
     setActiveLog("bootstrap-log");
     showLog();
-    addLogSection("Bootstrap logs (resumed)");
+    addLogSection(copy("sections.bootstrap_resumed"));
     const publicJwk = await crypto.subtle.exportKey("jwk", kp.publicKey);
     const interactionStep = addLogStep(
-      "User at PS: consent prompt (resumed)",
+      copy("bootstrap_resumed.ps_consent_prompt.label"),
       "pending",
-      `<p>Page was reloaded (or returned from the PS redirect) mid-ceremony \u2014 resuming the long-poll against the saved pending URL.</p><div class="token-display">Polling ${escapeHtml(saved.pollUrl)}</div>`
+      desc("bootstrap_resumed.ps_consent_prompt") + `<div class="token-display">Polling ${escapeHtml(saved.pollUrl)}</div>`
     );
     const pending = await pollForBootstrapToken(saved.pollUrl, kp, publicJwk, interactionStep);
     if (!pending) return true;
     addLogStep(
-      "PS response: bootstrap_token received",
+      copy("bootstrap.ps_bootstrap_token_received.label"),
       "success",
-      `<p>Signed JWT cnf-bound to the agent's ephemeral; single-use ticket the agent hands to its own agent server next.</p>` + formatToken("Bootstrap Token (aa-bootstrap+jwt)", pending.bootstrap_token, decodeJWTPayloadBrowser(pending.bootstrap_token))
+      desc("bootstrap.ps_bootstrap_token_received") + formatToken("Bootstrap Token (aa-bootstrap+jwt)", pending.bootstrap_token, decodeJWTPayloadBrowser(pending.bootstrap_token))
     );
     await completeAgentServerBootstrap(pending.bootstrap_token, publicJwk, kp, { psUrl: saved.psUrl });
     return true;
@@ -3824,11 +4041,11 @@ ${renderJSON(body)}`;
     }
     setActiveLog("authz-log");
     showLog();
-    addLogSection("Authorization logs (resumed)");
+    addLogSection(copy("sections.authorize_resumed"));
     const interactionStep = addLogStep(
-      "User at PS: consent prompt (resumed)",
+      copy("authorize_resumed.ps_consent_prompt.label"),
       "pending",
-      `<p>Resuming the authorize long-poll after a return from the PS \u2014 waits for the user's scope-consent decision to resolve.</p><div class="token-display">Polling ${escapeHtml(saved.pollUrl)}</div>`
+      desc("authorize_resumed.ps_consent_prompt") + `<div class="token-display">Polling ${escapeHtml(saved.pollUrl)}</div>`
     );
     startAuthTokenPolling(saved.pollUrl, saved.tokenEndpoint, interactionStep);
     return true;
@@ -3862,9 +4079,9 @@ ${renderJSON(body)}`;
     const pollPath = new URL(absolutePollUrl).pathname;
     if (!pollStep) {
       pollStep = addLogStep(
-        `Agent \u2192 Person Server: GET ${pollPath} (long-poll)`,
+        fmt(copy("authorize.ps_pending_longpoll.label_template"), { path: pollPath }),
         "pending",
-        `<p>Agent long-polls the PS pending URL for the auth_token. <code>Prefer: wait=30</code> asks the PS to hold the request for up to 30s; on 202 the client loops immediately.</p>` + formatRequest("GET", absolutePollUrl, {
+        desc("authorize.ps_pending_longpoll") + formatRequest("GET", absolutePollUrl, {
           "Prefer": "wait=30",
           "Signature-Input": 'sig=("@method" "@authority" "@path" "signature-key");created=...',
           "Signature": "sig=:...:",
@@ -3896,10 +4113,10 @@ ${renderJSON(body)}`;
         );
         if (res.status === 200) {
           clearPendingAuthorize();
-          resolveStep(pollStep, "success", `Agent \u2192 Person Server: GET ${pollPath} \u2192 200`);
+          resolveStep(pollStep, "success", fmt(copy("authorize.ps_pending_longpoll.label_resolved_template"), { path: pollPath, status: 200 }));
           resolveStep(interactionStep, "success", "Interaction Completed");
           addLogStep(
-            "Authorization Granted",
+            copy("authorize.authorization_granted.label"),
             "success",
             (body?.auth_token ? formatAuthToken(body.auth_token) : "") + anotherRequestButton()
           );
@@ -3908,10 +4125,10 @@ ${renderJSON(body)}`;
         if (res.status === 403 || res.status === 408) {
           clearPendingAuthorize();
           const label = res.status === 403 ? "Interaction Denied" : "Interaction Timed Out";
-          resolveStep(pollStep, "error", `Agent \u2192 Person Server: GET ${pollPath} \u2192 ${res.status}`);
+          resolveStep(pollStep, "error", fmt(copy("authorize.ps_pending_longpoll.label_resolved_template"), { path: pollPath, status: res.status }));
           resolveStep(interactionStep, "error", label);
           addLogStep(
-            `Authorization ${res.status === 403 ? "Denied" : "Timed Out"}`,
+            copy(res.status === 403 ? "authorize.authorization_denied.label" : "authorize.authorization_timed_out.label"),
             "error",
             formatResponse(res.status, null, body) + anotherRequestButton()
           );
@@ -3950,16 +4167,16 @@ ${renderJSON(body)}`;
     const keyPair = window.aauthEphemeral.get();
     if (!keyPair) {
       addLogStep(
-        "Demo API Call Failed",
+        copy("demo_api.missing_key.label"),
         "error",
-        "<p>Missing ephemeral key \u2014 cannot sign /api/demo.</p>"
+        desc("demo_api.missing_key")
       );
       return;
     }
     const reqStep = addLogStep(
-      `GET ${new URL(endpoint).pathname}`,
+      fmt(copy("demo_api.request.label_template"), { path: new URL(endpoint).pathname }),
       "pending",
-      `<p>Calling the resource's demo endpoint. The request is signed per RFC 9421 with <code>sig=jwt;jwt="&lt;auth_token&gt;"</code>: the server verifies the HTTP signature against <code>auth_token.cnf.jwk</code> (our ephemeral), then separately verifies the auth_token itself against the PS JWKS and checks that <code>scope</code> covers <code>playground.demo</code>.</p>` + formatRequest("GET", endpoint, {
+      desc("demo_api.request") + formatRequest("GET", endpoint, {
         "Signature-Input": 'sig=("@method" "@authority" "@path" "signature-key");created=...',
         "Signature": "sig=:...:",
         "Signature-Key": `sig=jwt;jwt="${authToken?.substring(0, 20)}..."`
@@ -3975,16 +4192,16 @@ ${renderJSON(body)}`;
         components: ["@method", "@authority", "@path", "signature-key"]
       });
       const body = await res.json().catch(() => null);
-      resolveStep(reqStep, res.ok ? "success" : "error", `GET /api/demo \u2192 ${res.status}`);
+      resolveStep(reqStep, res.ok ? "success" : "error", fmt(copy("demo_api.request.label_resolved_template"), { path: "/api/demo", status: res.status }));
       addLogStep(
-        res.ok ? "Demo API Called" : "Demo API Call Failed",
+        copy(res.ok ? "demo_api.success.label" : "demo_api.failure.label"),
         res.ok ? "success" : "error",
         formatResponse(res.status, null, body) + anotherRequestButton()
       );
     } catch (err) {
-      resolveStep(reqStep, "error", "GET /api/demo (network error)");
+      resolveStep(reqStep, "error", fmt(copy("demo_api.request.label_error_network_template"), { path: "/api/demo" }));
       addLogStep(
-        "Demo API Call Failed",
+        copy("demo_api.failure.label"),
         "error",
         `<p style="color: var(--error)">${escapeHtml(err.message)}</p>` + anotherRequestButton()
       );
