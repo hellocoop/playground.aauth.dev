@@ -763,14 +763,19 @@ document.getElementById('notes-reset-btn')?.addEventListener('click', () => {
 })
 
 ;(async () => {
-  // Restore any in-progress log snapshots first — this lets
-  // resumePendingInteraction / resumePendingAuthorize (fired at the
-  // end of this IIFE) pick up inside the same <details class
-  // "log-section"> the flow was writing before the same-tab PS
-  // redirect, instead of starting a "(resumed)" branch.
-  window.aauthRestorePersistedLogs?.()
   loadBinding()
   const restored = await restoreAgentTokenAndKey()
+
+  // Restore any in-progress log snapshots so resumePendingInteraction
+  // / resumePendingAuthorize (fired below) pick up inside the same
+  // <details class="log-section"> the flow was writing before the
+  // same-tab PS redirect, instead of starting a "(resumed)" branch.
+  // This has to come AFTER the await — app.js loads before
+  // protocol.js (script tag order), so on the IIFE's first
+  // synchronous pass window.aauthRestorePersistedLogs is still
+  // undefined; the await yields to the event loop and lets
+  // protocol.js finish loading / defining it.
+  window.aauthRestorePersistedLogs?.()
   if (restored) {
     const payload = decodeJWTPayload(agentToken)
     setAuthenticated(payload.sub)
