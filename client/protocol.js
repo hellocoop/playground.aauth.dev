@@ -457,7 +457,7 @@ async function runBootstrap(psUrl, hints) {
   )
 
   // Step 4: exchange with our own agent server /bootstrap/challenge.
-  return await completeAgentServerBootstrap(pending.bootstrap_token, publicJwk, keyPair, { psUrl })
+  return await completeAgentServerBootstrap(pending.bootstrap_token, publicJwk, keyPair, { psUrl, psBootstrapEndpoint: bootstrapEndpoint })
 }
 
 // Poll the PS pending URL for the bootstrap_token. Polls are signed with
@@ -706,6 +706,43 @@ async function completeAgentServerBootstrap(bootstrapToken, publicJwk, keyPair, 
   window.aauthApplyBootstrapResult(result)
 
   appendStepBody(verifyStep, formatToken('Agent Token (aa-agent+jwt)', result.agent_token, decodeJWTPayloadBrowser(result.agent_token)))
+
+  // Announce the new aauth:local@domain identity back to the PS so it can
+  // bind it to the user. Empty POST signed sig=jwt with the agent_token,
+  // per draft-hardt-aauth-bootstrap §Bootstrap Completion. Best-effort:
+  // the agent_token is already in hand, so a failed announcement does not
+  // fail bootstrap — the PS can still learn the binding lazily from a
+  // future resource_token.
+  const psBootstrapEndpoint = ctx.psBootstrapEndpoint || (ctx.psUrl ? `${ctx.psUrl.replace(/\/$/, '')}/bootstrap` : null)
+  if (psBootstrapEndpoint && result.agent_token) {
+    const announcePath = new URL(psBootstrapEndpoint).pathname
+    const announceStep = addLogStep(fmt(copy('bootstrap.ps_announce_request.label_template'), { path: announcePath }), 'pending',
+      desc('bootstrap.ps_announce_request') +
+      formatRequest('POST', psBootstrapEndpoint, {
+        'Content-Length': '0',
+        'Signature-Input': 'sig=("@method" "@authority" "@path" "signature-key");created=...',
+        'Signature': 'sig=:...:',
+        'Signature-Key': `sig=jwt;jwt="${result.agent_token.substring(0, 20)}..."`,
+      }, null)
+    )
+    try {
+      const res = await sigFetch(psBootstrapEndpoint, {
+        method: 'POST',
+        signingKey: publicJwk,
+        signingCryptoKey: keyPair.privateKey,
+        signatureKey: { type: 'jwt', jwt: result.agent_token },
+        components: ['@method', '@authority', '@path', 'signature-key'],
+      })
+      const status = res.status === 204 ? 'success' : (res.ok ? 'success' : 'error')
+      resolveStep(announceStep, status, fmt(copy('bootstrap.ps_announce_request.label_resolved_template'), { path: announcePath, status: res.status }))
+      let bodyText = null
+      try { bodyText = await res.text() } catch {}
+      appendStepBody(announceStep, formatResponse(res.status, null, bodyText && bodyText.length ? bodyText : null))
+    } catch (err) {
+      resolveStep(announceStep, 'error', fmt(copy('bootstrap.ps_announce_request.label_error_network_template'), { path: announcePath }))
+      appendStepBody(announceStep, `<p style="color: var(--error)">${escapeHtml(err.message)}</p>`)
+    }
+  }
 
   return { result }
 }
@@ -1269,7 +1306,7 @@ async function resumePendingInteraction() {
     desc('bootstrap.ps_bootstrap_token_received') +
     formatToken('Bootstrap Token (aa-bootstrap+jwt)', pending.bootstrap_token, decodeJWTPayloadBrowser(pending.bootstrap_token))
   )
-  await completeAgentServerBootstrap(pending.bootstrap_token, publicJwk, kp, { psUrl: saved.psUrl })
+  await completeAgentServerBootstrap(pending.bootstrap_token, publicJwk, kp, { psUrl: saved.psUrl, psBootstrapEndpoint: saved.bootstrapEndpoint })
   // Bootstrap is a standalone flow now; don't auto-chain into /authorize.
   // The user clicks Continue when they're ready to authorize with their
   // chosen scopes.

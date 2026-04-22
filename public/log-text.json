@@ -76,6 +76,12 @@
       "label_resolved_template": "Agent → Agent Server: POST {path} → {status}",
       "label_error_network_template": "Agent → Agent Server: POST {path} (network error)",
       "description": "The Agent Server verifies your WebAuthn response and remembers the pairing of you, this Person Server, and this device — so future refreshes skip the Person Server."
+    },
+    "ps_announce_request": {
+      "label_template": "Agent → Person Server: POST {path} (announce)",
+      "label_resolved_template": "Agent → Person Server: POST {path} (announce) → {status}",
+      "label_error_network_template": "Agent → Person Server: POST {path} (announce, network error)",
+      "description": "The agent posts an empty, agent_token-signed request back to the Person Server so the PS can bind the new aauth:local@domain agent identifier to your user record."
     }
   },
 

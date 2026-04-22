@@ -2904,6 +2904,12 @@
         label_resolved_template: "Agent \u2192 Agent Server: POST {path} \u2192 {status}",
         label_error_network_template: "Agent \u2192 Agent Server: POST {path} (network error)",
         description: "The Agent Server verifies your WebAuthn response and remembers the pairing of you, this Person Server, and this device \u2014 so future refreshes skip the Person Server."
+      },
+      ps_announce_request: {
+        label_template: "Agent \u2192 Person Server: POST {path} (announce)",
+        label_resolved_template: "Agent \u2192 Person Server: POST {path} (announce) \u2192 {status}",
+        label_error_network_template: "Agent \u2192 Person Server: POST {path} (announce, network error)",
+        description: "The agent posts an empty, agent_token-signed request back to the Person Server so the PS can bind the new aauth:local@domain agent identifier to your user record."
       }
     },
     bootstrap_resumed: {
@@ -3374,7 +3380,7 @@ ${renderJSON(body)}`;
       "success",
       desc("bootstrap.ps_bootstrap_token_received") + formatToken("Bootstrap Token (aa-bootstrap+jwt)", pending.bootstrap_token, decodeJWTPayloadBrowser(pending.bootstrap_token))
     );
-    return await completeAgentServerBootstrap(pending.bootstrap_token, publicJwk, keyPair, { psUrl });
+    return await completeAgentServerBootstrap(pending.bootstrap_token, publicJwk, keyPair, { psUrl, psBootstrapEndpoint: bootstrapEndpoint });
   }
   var _bootstrapPollRunning = false;
   async function pollForBootstrapToken(absolutePollUrl, keyPair, publicJwk, interactionStep, pollStep) {
@@ -3585,6 +3591,40 @@ ${renderJSON(body)}`;
     });
     window.aauthApplyBootstrapResult(result);
     appendStepBody(verifyStep, formatToken("Agent Token (aa-agent+jwt)", result.agent_token, decodeJWTPayloadBrowser(result.agent_token)));
+    const psBootstrapEndpoint = ctx.psBootstrapEndpoint || (ctx.psUrl ? `${ctx.psUrl.replace(/\/$/, "")}/bootstrap` : null);
+    if (psBootstrapEndpoint && result.agent_token) {
+      const announcePath = new URL(psBootstrapEndpoint).pathname;
+      const announceStep = addLogStep(
+        fmt(copy("bootstrap.ps_announce_request.label_template"), { path: announcePath }),
+        "pending",
+        desc("bootstrap.ps_announce_request") + formatRequest("POST", psBootstrapEndpoint, {
+          "Content-Length": "0",
+          "Signature-Input": 'sig=("@method" "@authority" "@path" "signature-key");created=...',
+          "Signature": "sig=:...:",
+          "Signature-Key": `sig=jwt;jwt="${result.agent_token.substring(0, 20)}..."`
+        }, null)
+      );
+      try {
+        const res = await (0, import_httpsig.fetch)(psBootstrapEndpoint, {
+          method: "POST",
+          signingKey: publicJwk,
+          signingCryptoKey: keyPair.privateKey,
+          signatureKey: { type: "jwt", jwt: result.agent_token },
+          components: ["@method", "@authority", "@path", "signature-key"]
+        });
+        const status = res.status === 204 ? "success" : res.ok ? "success" : "error";
+        resolveStep(announceStep, status, fmt(copy("bootstrap.ps_announce_request.label_resolved_template"), { path: announcePath, status: res.status }));
+        let bodyText = null;
+        try {
+          bodyText = await res.text();
+        } catch {
+        }
+        appendStepBody(announceStep, formatResponse(res.status, null, bodyText && bodyText.length ? bodyText : null));
+      } catch (err) {
+        resolveStep(announceStep, "error", fmt(copy("bootstrap.ps_announce_request.label_error_network_template"), { path: announcePath }));
+        appendStepBody(announceStep, `<p style="color: var(--error)">${escapeHtml(err.message)}</p>`);
+      }
+    }
     return { result };
   }
   async function deriveBindingKeyBrowser(psUrl, userSub) {
@@ -4027,7 +4067,7 @@ ${renderJSON(body)}`;
       "success",
       desc("bootstrap.ps_bootstrap_token_received") + formatToken("Bootstrap Token (aa-bootstrap+jwt)", pending.bootstrap_token, decodeJWTPayloadBrowser(pending.bootstrap_token))
     );
-    await completeAgentServerBootstrap(pending.bootstrap_token, publicJwk, kp, { psUrl: saved.psUrl });
+    await completeAgentServerBootstrap(pending.bootstrap_token, publicJwk, kp, { psUrl: saved.psUrl, psBootstrapEndpoint: saved.bootstrapEndpoint });
     return true;
   }
   window.resumePendingInteraction = resumePendingInteraction;
