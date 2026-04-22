@@ -736,7 +736,6 @@ details.log-section + details.log-section {
   font-family: 'IBM Plex Mono', 'SF Mono', 'Fira Code', monospace;
   margin: 0 0 0.4rem 0;
 }
-.scope-required { color: var(--text); margin-left: 0.15rem; }
 .scope-caption {
   color: var(--muted);
   font-size: 0.78rem;

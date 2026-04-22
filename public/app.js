@@ -394,7 +394,7 @@ window.aauthEphemeral = {
 // something the server would reject.
 
 const IDENTITY_SCOPES = [
-  { name: 'openid',      description: 'Verify your identity',            required: true },
+  { name: 'openid',      description: 'Verify your identity',            checked: true },
   { name: 'profile',     description: 'Access your profile information', checked: true },
   { name: 'name',        description: 'Access your full name' },
   { name: 'email',       description: 'Access your email address' },
@@ -411,10 +411,8 @@ const IDENTITY_SCOPES = [
 function renderScopeRow(scope, description, opts = {}) {
   const attrs = [`value="${scope}"`]
   if (opts.checked) attrs.push('checked')
-  if (opts.disabled) attrs.push('disabled')
   const title = description ? ` title="${description.replace(/"/g, '&quot;')}"` : ''
-  const required = opts.required ? ' <span class="scope-required">*</span>' : ''
-  return `<label class="checkbox-label"${title}><input type="checkbox" ${attrs.join(' ')}> <span>${scope}${required}</span></label>`
+  return `<label class="checkbox-label"${title}><input type="checkbox" ${attrs.join(' ')}> <span>${scope}</span></label>`
 }
 
 // Identity scopes split into two visual columns:
@@ -434,9 +432,7 @@ function hydrateIdentityScopes() {
       <div class="scope-column-heading">${heading}</div>
       <div class="scope-column-items">
         ${scopes.map((s) => renderScopeRow(s.name, s.description, {
-          checked: !!s.required || !!s.checked,
-          disabled: !!s.required,
-          required: !!s.required,
+          checked: !!s.checked,
         })).join('')}
       </div>
     </div>
@@ -487,7 +483,6 @@ function loadSettings() {
     const set = new Set(saved.identity_scopes)
     const boxes = document.querySelectorAll('#identity-scope-grid input[type="checkbox"]')
     for (const b of boxes) {
-      if (b.disabled) continue // openid stays checked regardless
       b.checked = set.has(b.value)
     }
   }
