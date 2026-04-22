@@ -288,11 +288,6 @@ function getSelectedIdentityScopes() {
   return Array.from(checkboxes).map((cb) => cb.value).join(' ')
 }
 
-function getSelectedResourceScopes() {
-  const checkboxes = document.querySelectorAll('#resource-scope-grid input[type="checkbox"]:checked')
-  return Array.from(checkboxes).map((cb) => cb.value).join(' ')
-}
-
 function getHints() {
   const hints = {}
   const fields = ['login-hint', 'domain-hint', 'provider-hint', 'tenant']
@@ -891,16 +886,16 @@ async function runRefresh() {
   return result
 }
 
-// ── Main flows: Bootstrap button + Continue button ──
+// ── Main flows: Bootstrap button + Resource Request button ──
 //
 // Two independent entry points, mutually exclusive in the UI:
 //
 //   startBootstrap — pre-bootstrap. Establishes the (PS, user) binding
-//                    and mints an agent_token. No scope, no /authorize.
+//                    and mints an agent_token. No scope negotiation.
 //
-//   startAuthorize — post-bootstrap. Uses the existing binding; refreshes
-//                    agent_token if expired, then runs /authorize → PS
-//                    /token → API call. Repeatable with different scopes.
+//   startWhoami    — post-bootstrap. Uses the existing binding; refreshes
+//                    agent_token if expired, then GETs whoami (401 → PS
+//                    /token → 200 + claims). See runWhoamiCall below.
 
 async function startBootstrap() {
   const psUrl = (window.getCurrentPS?.() || '').trim()
@@ -910,9 +905,9 @@ async function startBootstrap() {
   }
 
   // Route all log calls during bootstrap to the log container inside
-  // the Bootstrap Agent fieldset. Kept set until startAuthorize takes
-  // over; refresh (which fires from inside startAuthorize) keeps its
-  // steps here too since it's part of the agent-identity lifecycle.
+  // the Bootstrap Agent fieldset. Kept set until startWhoami takes
+  // over; refresh (which fires from inside startWhoami) logs into the
+  // resource-log instead.
   setActiveLog('bootstrap-log')
   clearLog()
   showLog()
@@ -932,39 +927,40 @@ async function startBootstrap() {
   await runBootstrap(psUrl, hints)
 }
 
-async function startAuthorize() {
-  const { bindingKey, bindingPs } = window.aauthBinding.get()
-  if (!bindingKey || !bindingPs) {
+
+// ── Whoami resource call ──
+//
+// Three-step ceremony that demonstrates the full resource-call flow:
+//
+//   1. Agent GETs whoami with its agent_token. Whoami responds 401 with
+//      a minted resource_token in AAuth-Requirement — it knows who the
+//      agent is, but the agent hasn't presented a user-released token yet.
+//   2. Agent exchanges the resource_token at the PS's /token endpoint.
+//      Returns auth_token on 200 (user already consented to this scope
+//      pair) or 202 + interaction on first-time consent.
+//   3. Agent retries the GET with auth_token. Whoami verifies the token
+//      against the PS's JWKS, checks 'whoami' scope, and returns the
+//      identity claims encoded in the payload.
+//
+// getHints() pulls from the bootstrap section; getSelectedIdentityScopes()
+// drives both the ?scope= query and what the PS releases into the token.
+
+async function startWhoami() {
+  const { bindingPs } = window.aauthBinding.get()
+  if (!bindingPs) {
     alert('No agent binding found. Bootstrap first.')
     return
   }
 
-  // The combined identity + resource scope string sent at /authorize.
-  // Resource scopes are validated server-side against SCOPE_DESCRIPTIONS;
-  // identity scopes pass through resource_token → PS /token and are
-  // applied as claim-release rules by the PS.
-  const combined = getCombinedScope()
-  if (!combined) {
-    alert('Select at least one scope')
-    return
-  }
-
-  // Authorization steps render in the Authorization Request fieldset's
-  // own log. Refresh (if agent_token is expired) still uses the bootstrap
-  // log since that's where the agent-identity card lives; we swap
-  // active back to authz-log after the refresh completes.
-  setActiveLog('authz-log')
+  setActiveLog('resource-log')
   clearLog()
   showLog()
 
-  // Hide the Start button while this request is in flight. Terminal
-  // outcomes render an "Another Authorization Request" button at the
-  // bottom of the log; clicking that re-shows Start (see the
-  // .js-scroll-authz delegated handler).
-  document.querySelector('#authz-section .authz-actions')?.classList.add('hidden')
+  document.querySelector('#resource-section .authz-actions')?.classList.add('hidden')
 
-  const hints = getHints()
-
+  // Refresh agent_token if expired — whoami needs a live one to sign the
+  // initial GET. Refresh steps render in this same resource-log so the
+  // user sees the full trail in one place.
   let agentTokenValid = false
   const savedAgentToken = localStorage.getItem('aauth-agent-token')
   if (savedAgentToken) {
@@ -973,155 +969,165 @@ async function startAuthorize() {
       agentTokenValid = p && p.exp > Math.floor(Date.now() / 1000)
     } catch { /* invalid token */ }
   }
-
   if (!agentTokenValid) {
     const refreshed = await runRefresh()
     if (!refreshed) return
   }
 
-  await runAuthorizationAgainstPS(bindingPs, combined, hints)
+  const hints = getHints()
+  const identityScopes = getSelectedIdentityScopes()
+  const whoamiOrigin = window.WHOAMI_ORIGIN || 'https://whoami.aauth.dev'
+  const whoamiUrl = identityScopes
+    ? `${whoamiOrigin}/?scope=${encodeURIComponent(identityScopes)}`
+    : `${whoamiOrigin}/`
+
+  await runWhoamiCall(whoamiUrl, bindingPs, hints)
 }
 
-// Identity + resource scopes concatenated into one space-delimited string.
-// No identity vs. resource distinction at the wire.
-function getCombinedScope() {
-  const identity = (getSelectedIdentityScopes() || '').split(/\s+/).filter(Boolean)
-  const resource = (getSelectedResourceScopes() || '').split(/\s+/).filter(Boolean)
-  const all = Array.from(new Set([...identity, ...resource]))
-  return all.join(' ')
-}
-
-async function runAuthorizationAgainstPS(psUrl, scope, hints) {
+async function runWhoamiCall(whoamiUrl, bindingPs, hints) {
   const keyPair = window.aauthEphemeral.get()
   const agentToken = localStorage.getItem('aauth-agent-token')
-  if (!agentToken || !keyPair) {
-    addLogStep(copy('authorize.missing_context.label'), 'error',
-      desc('authorize.missing_context'))
+  if (!keyPair || !agentToken) {
+    addLogStep('Missing agent_token or ephemeral key', 'error',
+      '<p>The agent doesn\'t have an agent token or key yet — bootstrap has to finish first.</p>')
     return
   }
-
-  addLogSection(copy('sections.authorize'))
-
-  // Mint a fresh resource_token via /authorize. This is an httpsig call
-  // (RFC 9421) signed by the ephemeral key, with the agent_token carried
-  // in Signature-Key: sig=jwt — mirrors how we call the PS /token. The
-  // agent_token is authentication, not request data, so it belongs in a
-  // header, not the body.
-  const authzEndpoint = `${window.location.origin}/authorize`
-  const authzBody = { ps: psUrl, scope }
   const signingJwk = await crypto.subtle.exportKey('jwk', keyPair.publicKey)
 
-  const authzReqStep = addLogStep(fmt(copy('authorize.agent_server_authorize_request.label_template'), { path: new URL(authzEndpoint).pathname }), 'pending',
-    desc('authorize.agent_server_authorize_request') +
-    formatRequest('POST', authzEndpoint, {
-      'Content-Type': 'application/json',
-      'Signature-Input': 'sig=("@method" "@authority" "@path" "content-type" "signature-key");created=...',
-      'Signature': 'sig=:...:',
-      'Signature-Key': `sig=jwt;jwt="${agentToken?.substring(0, 20)}..."`,
-    }, authzBody)
-  )
-  let authzData
-  try {
-    const res = await sigFetch(authzEndpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(authzBody),
-      signingKey: signingJwk,
-      signingCryptoKey: keyPair.privateKey,
-      signatureKey: { type: 'jwt', jwt: agentToken },
-      components: ['@method', '@authority', '@path', 'content-type', 'signature-key'],
-    })
-    authzData = await res.json()
-    if (!res.ok) {
-      resolveStep(authzReqStep, 'error', fmt(copy('authorize.agent_server_authorize_request.label_resolved_template'), { path: '/authorize', status: res.status }))
-      appendStepBody(authzReqStep, formatResponse(res.status, null, authzData))
-      return
-    }
-    resolveStep(authzReqStep, 'success', fmt(copy('authorize.agent_server_authorize_request.label_resolved_template'), { path: '/authorize', status: 200 }))
-  } catch (err) {
-    resolveStep(authzReqStep, 'error', fmt(copy('authorize.agent_server_authorize_request.label_error_network_template'), { path: '/authorize' }))
-    appendStepBody(authzReqStep, `<p style="color: var(--error)">${escapeHtml(err.message)}</p>`)
-    return
-  }
+  addLogSection('Whoami request logs')
 
-  appendStepBody(authzReqStep, formatToken('Resource Token (aa-resource+jwt)', authzData.resource_token, authzData.resource_token_decoded))
+  const urlObj = new URL(whoamiUrl)
+  const whoamiPathDisplay = urlObj.pathname + urlObj.search
 
-  const psMetadata = authzData.ps_metadata
-  const resourceToken = authzData.resource_token
-  const tokenEndpoint = psMetadata.token_endpoint
-  const psRequestBody = {
-    resource_token: resourceToken,
-    capabilities: ['interaction'],
-    // Force the consent screen on every request so the demo flow shows
-    // the full UX even when the PS would otherwise auto-release from a
-    // cached binding (matches OIDC prompt=consent semantics).
-    prompt: 'consent',
-    ...hints,
-  }
-
-  const psReqStep = addLogStep(fmt(copy('authorize.ps_token_request.label_template'), { path: new URL(tokenEndpoint).pathname }), 'pending',
-    desc('authorize.ps_token_request') +
-    formatRequest('POST', tokenEndpoint, {
-      'Content-Type': 'application/json',
+  // Step 1: unauthenticated-for-user GET. Agent token proves the agent's
+  // identity but carries no user claims, so whoami bounces with a
+  // resource_token the agent can trade at the PS.
+  const step1 = addLogStep(`Agent → Whoami: GET ${whoamiPathDisplay}`, 'pending',
+    `<p>Agent calls whoami with its agent_token. The resource knows the agent but has no user claims yet, so it returns 401 with a resource_token the agent can exchange at the Person Server.</p>` +
+    formatRequest('GET', whoamiUrl, {
       'Signature-Input': 'sig=("@method" "@authority" "@path" "signature-key");created=...',
       'Signature': 'sig=:...:',
       'Signature-Key': `sig=jwt;jwt="${agentToken?.substring(0, 20)}..."`,
-    }, psRequestBody)
+    }, null)
   )
 
+  let resourceToken
   try {
-    const signingJwk = await crypto.subtle.exportKey('jwk', keyPair.publicKey)
-    const psRes = await sigFetch(tokenEndpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(psRequestBody),
+    const res = await sigFetch(whoamiUrl, {
+      method: 'GET',
       signingKey: signingJwk,
       signingCryptoKey: keyPair.privateKey,
       signatureKey: { type: 'jwt', jwt: agentToken },
       components: ['@method', '@authority', '@path', 'signature-key'],
     })
+    const body = await res.json().catch(() => null)
+    const requirement = res.headers.get('aauth-requirement') || ''
+    const respHeaders = {}
+    if (requirement) respHeaders['aauth-requirement'] = requirement
+    if (res.status === 401) {
+      resourceToken = parseInteractionHeader(requirement)['resource-token']
+    }
+    if (res.status === 401 && resourceToken) {
+      resolveStep(step1, 'success', `Agent → Whoami: GET ${whoamiPathDisplay} → 401`)
+      appendStepBody(step1, formatResponse(401, respHeaders, body))
+      appendStepBody(step1, formatToken('Resource Token (aa-resource+jwt)', resourceToken, decodeJWTPayloadBrowser(resourceToken)))
+    } else {
+      resolveStep(step1, 'error', `Agent → Whoami: GET ${whoamiPathDisplay} → ${res.status}`)
+      appendStepBody(step1, formatResponse(res.status, respHeaders, body) + anotherRequestButton())
+      return
+    }
+  } catch (err) {
+    resolveStep(step1, 'error', `Agent → Whoami: GET ${whoamiPathDisplay} (network error)`)
+    appendStepBody(step1, `<p style="color: var(--error)">${escapeHtml(err.message)}</p>`)
+    return
+  }
 
-    const responseHeaders = {}
+  // Step 2: exchange resource_token at PS /token. Discover the token
+  // endpoint from PS metadata so this works regardless of which PS the
+  // user bootstrapped against.
+  const psMetadataUrl = `${bindingPs.replace(/\/$/, '')}/.well-known/aauth-person.json`
+  let psMetadata
+  try {
+    const metaRes = await fetch(psMetadataUrl)
+    psMetadata = await metaRes.json()
+    if (!metaRes.ok || !psMetadata?.token_endpoint) {
+      addLogStep(`Person Server metadata fetch failed`, 'error',
+        formatResponse(metaRes.status, null, psMetadata) + anotherRequestButton())
+      return
+    }
+  } catch (err) {
+    addLogStep(`Person Server metadata fetch failed`, 'error',
+      `<p style="color: var(--error)">${escapeHtml(err.message)}</p>` + anotherRequestButton())
+    return
+  }
+
+  const tokenEndpoint = psMetadata.token_endpoint
+  const psPath = new URL(tokenEndpoint).pathname
+  const psBody = {
+    resource_token: resourceToken,
+    capabilities: ['interaction'],
+    // Force the consent screen every time so the demo always shows the
+    // full UX — matches the bootstrap + old authorize flows.
+    prompt: 'consent',
+    ...hints,
+  }
+
+  const step2 = addLogStep(`Agent → Person Server: POST ${psPath}`, 'pending',
+    `<p>Agent presents the resource_token and its agent_token to the Person Server's token endpoint. The PS either releases an auth_token immediately (cached consent) or returns a 202 with a consent prompt.</p>` +
+    formatRequest('POST', tokenEndpoint, {
+      'Content-Type': 'application/json',
+      'Signature-Input': 'sig=("@method" "@authority" "@path" "signature-key");created=...',
+      'Signature': 'sig=:...:',
+      'Signature-Key': `sig=jwt;jwt="${agentToken?.substring(0, 20)}..."`,
+    }, psBody)
+  )
+
+  let authToken
+  try {
+    const psRes = await sigFetch(tokenEndpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(psBody),
+      signingKey: signingJwk,
+      signingCryptoKey: keyPair.privateKey,
+      signatureKey: { type: 'jwt', jwt: agentToken },
+      components: ['@method', '@authority', '@path', 'signature-key'],
+    })
+    const psResBody = await psRes.json().catch(() => null)
+    const respHeaders = {}
     for (const key of ['location', 'retry-after', 'aauth-requirement']) {
-      const val = psRes.headers.get(key)
-      if (val) responseHeaders[key] = val
+      const v = psRes.headers.get(key)
+      if (v) respHeaders[key] = v
     }
 
-    let psBody
-    try { psBody = await psRes.json() } catch { psBody = null }
-
-    const psPath = new URL(tokenEndpoint).pathname
-    resolveStep(psReqStep, psRes.ok ? 'success' : 'error', fmt(copy('authorize.ps_token_request.label_resolved_template'), { path: psPath, status: psRes.status }))
-
-    if (psRes.status === 200 && psBody?.auth_token) {
-      appendStepBody(psReqStep, formatResponse(psRes.status, responseHeaders, psBody))
-      appendStepBody(psReqStep, formatAuthToken(psBody.auth_token) + anotherRequestButton())
-      // await callDemoResourceApi(psBody.auth_token)
+    if (psRes.status === 200 && psResBody?.auth_token) {
+      authToken = psResBody.auth_token
+      resolveStep(step2, 'success', `Agent → Person Server: POST ${psPath} → 200`)
+      appendStepBody(step2, formatResponse(200, respHeaders, psResBody))
+      appendStepBody(step2, formatToken('Auth Token (aa-auth+jwt)', authToken, decodeJWTPayloadBrowser(authToken)))
     } else if (psRes.status === 202) {
-      // Interaction required. This can still happen on a scope upgrade.
-      appendStepBody(psReqStep, formatResponse(psRes.status, responseHeaders, psBody))
+      resolveStep(step2, 'success', `Agent → Person Server: POST ${psPath} → 202`)
+      appendStepBody(step2, formatResponse(202, respHeaders, psResBody))
+
       const reqHeader = psRes.headers.get('aauth-requirement') || ''
       const fromHeader = parseInteractionHeader(reqHeader)
       const interaction = {
-        requirement: fromHeader.requirement || psBody?.requirement,
-        code: fromHeader.code || psBody?.code,
+        requirement: fromHeader.requirement || psResBody?.requirement,
+        code: fromHeader.code || psResBody?.code,
         url: fromHeader.url || psMetadata.interaction_endpoint,
       }
-      const pollUrl = psRes.headers.get('location') || psBody?.location
-      // Order: create the pollStep FIRST, then the interaction step, so the
-      // log reads top-down as protocol trace (bytes out → bytes in → user
-      // action at PS). Matches how pollForBootstrapToken lays out bootstrap.
+      const pollUrl = psRes.headers.get('location') || psResBody?.location
+
       let pollStep = null
       if (pollUrl) {
         const absolutePollUrl = new URL(pollUrl, tokenEndpoint).href
-        const agentTokenForLog = localStorage.getItem('aauth-agent-token')
-        pollStep = addLogStep(fmt(copy('authorize.ps_pending_longpoll.label_template'), { path: new URL(absolutePollUrl).pathname }), 'pending',
-          desc('authorize.ps_pending_longpoll') +
+        pollStep = addLogStep(`Agent → Person Server: GET ${new URL(absolutePollUrl).pathname} (long-poll)`, 'pending',
+          `<p>Agent keeps a request open while you decide, instead of polling. The Person Server answers the moment you approve or deny.</p>` +
           formatRequest('GET', absolutePollUrl, {
             'Prefer': `wait=${POLL_WAIT_SECONDS}`,
             'Signature-Input': 'sig=("@method" "@authority" "@path" "signature-key");created=...',
             'Signature': 'sig=:...:',
-            'Signature-Key': `sig=jwt;jwt="${agentTokenForLog?.substring(0, 20)}..."`,
+            'Signature-Key': `sig=jwt;jwt="${agentToken?.substring(0, 20)}..."`,
           }, null)
         )
       }
@@ -1129,25 +1135,67 @@ async function runAuthorizationAgainstPS(psUrl, scope, hints) {
         desc('authorize.ps_consent_prompt') +
         renderInteraction(interaction, pollUrl, 'authorize')
       )
+
       if (pollUrl) {
-        // Persist enough state to resume polling after the user returns
-        // from wallet.hello-beta.net via same-tab redirect. Without this,
-        // the return trip would drop the user at the Continue form with
-        // no indication the authorize poll is still alive at the PS.
-        savePendingAuthorize({
-          pollUrl: new URL(pollUrl, tokenEndpoint).href,
-          tokenEndpoint,
-          psUrl,
-          scope,
+        // Hand off polling, then retry whoami with the minted auth_token.
+        // NOTE: if the user same-tab-redirects to PS and returns, the
+        // existing resumePendingAuthorize path won't know to retry whoami —
+        // it'll render the generic "Authorization Granted" step. Parked
+        // fix: savePendingWhoami + resumePendingWhoami.
+        startAuthTokenPolling(pollUrl, tokenEndpoint, interactionStep, pollStep, {
+          onAuthToken: async (tokenFromPoll) => {
+            await retryWhoami(whoamiUrl, whoamiPathDisplay, tokenFromPoll, keyPair, signingJwk)
+          },
         })
-        startAuthTokenPolling(pollUrl, tokenEndpoint, interactionStep, pollStep)
       }
+      return // polling handles the rest
     } else {
-      appendStepBody(psReqStep, formatResponse(psRes.status, responseHeaders, psBody))
+      resolveStep(step2, 'error', `Agent → Person Server: POST ${psPath} → ${psRes.status}`)
+      appendStepBody(step2, formatResponse(psRes.status, respHeaders, psResBody) + anotherRequestButton())
+      return
     }
   } catch (err) {
-    resolveStep(psReqStep, 'error', fmt(copy('authorize.ps_token_request.label_error_network_template'), { path: new URL(tokenEndpoint).pathname }))
-    appendStepBody(psReqStep, `<p style="color: var(--error)">${escapeHtml(err.message)}</p>`)
+    resolveStep(step2, 'error', `Agent → Person Server: POST ${psPath} (network error)`)
+    appendStepBody(step2, `<p style="color: var(--error)">${escapeHtml(err.message)}</p>`)
+    return
+  }
+
+  // Step 3 (no-interaction path): retry whoami with the fresh auth_token.
+  await retryWhoami(whoamiUrl, whoamiPathDisplay, authToken, keyPair, signingJwk)
+}
+
+async function retryWhoami(whoamiUrl, whoamiPathDisplay, authToken, keyPair, signingJwk) {
+  const step = addLogStep(`Agent → Whoami: GET ${whoamiPathDisplay}`, 'pending',
+    `<p>Same GET as before, now signed with the auth_token. Whoami verifies the token against the Person Server's JWKS, checks that 'whoami' is in scope, and returns the identity claims carried in the payload.</p>` +
+    formatRequest('GET', whoamiUrl, {
+      'Signature-Input': 'sig=("@method" "@authority" "@path" "signature-key");created=...',
+      'Signature': 'sig=:...:',
+      'Signature-Key': `sig=jwt;jwt="${authToken?.substring(0, 20)}..."`,
+    }, null)
+  )
+  try {
+    const res = await sigFetch(whoamiUrl, {
+      method: 'GET',
+      signingKey: signingJwk,
+      signingCryptoKey: keyPair.privateKey,
+      signatureKey: { type: 'jwt', jwt: authToken },
+      components: ['@method', '@authority', '@path', 'signature-key'],
+    })
+    const body = await res.json().catch(() => null)
+    resolveStep(step, res.ok ? 'success' : 'error', `Agent → Whoami: GET ${whoamiPathDisplay} → ${res.status}`)
+    appendStepBody(step, formatResponse(res.status, null, body))
+    if (res.ok) {
+      addLogStep('Identity claims received', 'success',
+        `<p>These are the claims the Person Server released for the scopes you granted. Compare them against the decoded auth_token payload above — whoami returns them verbatim from the token.</p>` +
+        tokenWrap(renderJSON(body)) +
+        anotherRequestButton()
+      )
+    } else {
+      appendStepBody(step, anotherRequestButton())
+    }
+  } catch (err) {
+    resolveStep(step, 'error', `Agent → Whoami: GET ${whoamiPathDisplay} (network error)`)
+    appendStepBody(step, `<p style="color: var(--error)">${escapeHtml(err.message)}</p>` + anotherRequestButton())
   }
 }
 
@@ -1350,9 +1398,11 @@ async function resumePendingAuthorize() {
   if (_resumeAuthorizePolling) return false
   _resumeAuthorizePolling = true
 
-  // Resumed authorize — pick up the log inside the Authorization
-  // Request fieldset where the original Continue click logged.
-  setActiveLog('authz-log')
+  // Resumed authorize — pick up the log inside the Resource Request
+  // fieldset where the original Call click logged. (Whoami flow
+  // doesn't currently savePendingAuthorize, so this path only fires
+  // for legacy pending states written before the whoami migration.)
+  setActiveLog('resource-log')
   showLog()
   addLogSection(copy('sections.authorize_resumed'))
   const interactionStep = addLogStep(copy('authorize_resumed.ps_consent_prompt.label'), 'pending',
@@ -1393,7 +1443,7 @@ if (document.readyState === 'complete') {
 // once at start; the polling is signed with sig=jwt using them.
 
 // Module-level guard: at most one authz poll loop ever running. Callers
-// (runAuthorizationAgainstPS, resumePendingAuthorize) may each invoke us
+// (runWhoamiCall, resumePendingAuthorize) may each invoke us
 // independently; without this flag their loops interleave and one loop's
 // signature stamps trail the other's by 30s+, which the PS sees as stale
 // signatures and rejects with skew-at-tolerance-boundary 401s. Clear on
@@ -1401,17 +1451,17 @@ if (document.readyState === 'complete') {
 // start fresh.
 let _authzPollRunning = false
 
-async function startAuthTokenPolling(pollUrl, baseUrl, interactionStep, pollStep) {
+async function startAuthTokenPolling(pollUrl, baseUrl, interactionStep, pollStep, options = {}) {
   if (_authzPollRunning) return
   _authzPollRunning = true
   try {
-    await _startAuthTokenPollingImpl(pollUrl, baseUrl, interactionStep, pollStep)
+    await _startAuthTokenPollingImpl(pollUrl, baseUrl, interactionStep, pollStep, options)
   } finally {
     _authzPollRunning = false
   }
 }
 
-async function _startAuthTokenPollingImpl(pollUrl, baseUrl, interactionStep, pollStep) {
+async function _startAuthTokenPollingImpl(pollUrl, baseUrl, interactionStep, pollStep, options = {}) {
   const absolutePollUrl = new URL(pollUrl, baseUrl).href
   const keyPair = window.aauthEphemeral.get()
   const agentToken = localStorage.getItem('aauth-agent-token')
@@ -1464,10 +1514,16 @@ async function _startAuthTokenPollingImpl(pollUrl, baseUrl, interactionStep, pol
         clearPendingAuthorize()
         resolveStep(pollStep, 'success', fmt(copy('authorize.ps_pending_longpoll.label_resolved_template'), { path: pollPath, status: 200 }))
         resolveStep(interactionStep, 'success', 'Interaction Completed')
-        addLogStep(copy('authorize.authorization_granted.label'), 'success',
-          (body?.auth_token ? formatAuthToken(body.auth_token) : '') +
-          anotherRequestButton())
-        // if (body?.auth_token) await callDemoResourceApi(body.auth_token)
+        // If a caller supplied onAuthToken (e.g. whoami needs to retry the
+        // resource call with the freshly-minted token), hand off to them.
+        // Otherwise render the generic "Authorization Granted" step.
+        if (options.onAuthToken && body?.auth_token) {
+          await options.onAuthToken(body.auth_token)
+        } else {
+          addLogStep(copy('authorize.authorization_granted.label'), 'success',
+            (body?.auth_token ? formatAuthToken(body.auth_token) : '') +
+            anotherRequestButton())
+        }
         return
       }
       if (res.status === 404) {
@@ -1507,10 +1563,10 @@ function decodeJWTPayloadBrowser(jwt) {
   }
 }
 
-// ── Wire up Bootstrap + Continue buttons ──
+// ── Wire up Bootstrap + Resource Request buttons ──
 
 document.getElementById('bootstrap-btn')?.addEventListener('click', startBootstrap)
-document.getElementById('authz-btn').addEventListener('click', startAuthorize)
+document.getElementById('whoami-btn')?.addEventListener('click', startWhoami)
 
 // Hellō Continue button — swap to loader state on click so the user
 // sees immediate feedback while the same-tab redirect navigates away.
@@ -1524,13 +1580,13 @@ document.addEventListener('click', (e) => {
   if (!btn) return
   // Scroll first so the user sees the form before the log disappears —
   // clearing mid-scroll feels jerky. Clear log after scroll settles.
-  const section = document.getElementById('authz-section')
+  const section = document.getElementById('resource-section')
   if (section) section.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  setActiveLog('authz-log')
+  setActiveLog('resource-log')
   setTimeout(clearLog, 300)
-  // Re-show the Start button — startAuthorize hid it when this request
+  // Re-show the Call button — startWhoami hid it when this request
   // kicked off.
-  document.querySelector('#authz-section .authz-actions')?.classList.remove('hidden')
+  document.querySelector('#resource-section .authz-actions')?.classList.remove('hidden')
 })
 
 // ── Close the loop: call the demo resource API with the minted auth_token ──

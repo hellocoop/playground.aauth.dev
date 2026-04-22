@@ -3242,10 +3242,6 @@ ${renderJSON(body)}`;
     const checkboxes = document.querySelectorAll('#identity-scope-grid input[type="checkbox"]:checked');
     return Array.from(checkboxes).map((cb) => cb.value).join(" ");
   }
-  function getSelectedResourceScopes() {
-    const checkboxes = document.querySelectorAll('#resource-scope-grid input[type="checkbox"]:checked');
-    return Array.from(checkboxes).map((cb) => cb.value).join(" ");
-  }
   function getHints() {
     const hints = {};
     const fields = ["login-hint", "domain-hint", "provider-hint", "tenant"];
@@ -3769,22 +3765,16 @@ ${renderJSON(body)}`;
     window.aauthUI?.setUnauthenticated?.();
     await runBootstrap(psUrl, hints);
   }
-  async function startAuthorize() {
-    const { bindingKey, bindingPs } = window.aauthBinding.get();
-    if (!bindingKey || !bindingPs) {
+  async function startWhoami() {
+    const { bindingPs } = window.aauthBinding.get();
+    if (!bindingPs) {
       alert("No agent binding found. Bootstrap first.");
       return;
     }
-    const combined = getCombinedScope();
-    if (!combined) {
-      alert("Select at least one scope");
-      return;
-    }
-    setActiveLog("authz-log");
+    setActiveLog("resource-log");
     clearLog();
     showLog();
-    document.querySelector("#authz-section .authz-actions")?.classList.add("hidden");
-    const hints = getHints();
+    document.querySelector("#resource-section .authz-actions")?.classList.add("hidden");
     let agentTokenValid = false;
     const savedAgentToken = localStorage.getItem("aauth-agent-token");
     if (savedAgentToken) {
@@ -3798,134 +3788,151 @@ ${renderJSON(body)}`;
       const refreshed = await runRefresh();
       if (!refreshed) return;
     }
-    await runAuthorizationAgainstPS(bindingPs, combined, hints);
+    const hints = getHints();
+    const identityScopes = getSelectedIdentityScopes();
+    const whoamiOrigin = window.WHOAMI_ORIGIN || "https://whoami.aauth.dev";
+    const whoamiUrl = identityScopes ? `${whoamiOrigin}/?scope=${encodeURIComponent(identityScopes)}` : `${whoamiOrigin}/`;
+    await runWhoamiCall(whoamiUrl, bindingPs, hints);
   }
-  function getCombinedScope() {
-    const identity = (getSelectedIdentityScopes() || "").split(/\s+/).filter(Boolean);
-    const resource = (getSelectedResourceScopes() || "").split(/\s+/).filter(Boolean);
-    const all = Array.from(/* @__PURE__ */ new Set([...identity, ...resource]));
-    return all.join(" ");
-  }
-  async function runAuthorizationAgainstPS(psUrl, scope, hints) {
+  async function runWhoamiCall(whoamiUrl, bindingPs, hints) {
     const keyPair = window.aauthEphemeral.get();
     const agentToken = localStorage.getItem("aauth-agent-token");
-    if (!agentToken || !keyPair) {
+    if (!keyPair || !agentToken) {
       addLogStep(
-        copy("authorize.missing_context.label"),
+        "Missing agent_token or ephemeral key",
         "error",
-        desc("authorize.missing_context")
+        "<p>The agent doesn't have an agent token or key yet \u2014 bootstrap has to finish first.</p>"
       );
       return;
     }
-    addLogSection(copy("sections.authorize"));
-    const authzEndpoint = `${window.location.origin}/authorize`;
-    const authzBody = { ps: psUrl, scope };
     const signingJwk = await crypto.subtle.exportKey("jwk", keyPair.publicKey);
-    const authzReqStep = addLogStep(
-      fmt(copy("authorize.agent_server_authorize_request.label_template"), { path: new URL(authzEndpoint).pathname }),
+    addLogSection("Whoami request logs");
+    const urlObj = new URL(whoamiUrl);
+    const whoamiPathDisplay = urlObj.pathname + urlObj.search;
+    const step1 = addLogStep(
+      `Agent \u2192 Whoami: GET ${whoamiPathDisplay}`,
       "pending",
-      desc("authorize.agent_server_authorize_request") + formatRequest("POST", authzEndpoint, {
-        "Content-Type": "application/json",
-        "Signature-Input": 'sig=("@method" "@authority" "@path" "content-type" "signature-key");created=...',
-        "Signature": "sig=:...:",
-        "Signature-Key": `sig=jwt;jwt="${agentToken?.substring(0, 20)}..."`
-      }, authzBody)
-    );
-    let authzData;
-    try {
-      const res = await (0, import_httpsig.fetch)(authzEndpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(authzBody),
-        signingKey: signingJwk,
-        signingCryptoKey: keyPair.privateKey,
-        signatureKey: { type: "jwt", jwt: agentToken },
-        components: ["@method", "@authority", "@path", "content-type", "signature-key"]
-      });
-      authzData = await res.json();
-      if (!res.ok) {
-        resolveStep(authzReqStep, "error", fmt(copy("authorize.agent_server_authorize_request.label_resolved_template"), { path: "/authorize", status: res.status }));
-        appendStepBody(authzReqStep, formatResponse(res.status, null, authzData));
-        return;
-      }
-      resolveStep(authzReqStep, "success", fmt(copy("authorize.agent_server_authorize_request.label_resolved_template"), { path: "/authorize", status: 200 }));
-    } catch (err) {
-      resolveStep(authzReqStep, "error", fmt(copy("authorize.agent_server_authorize_request.label_error_network_template"), { path: "/authorize" }));
-      appendStepBody(authzReqStep, `<p style="color: var(--error)">${escapeHtml(err.message)}</p>`);
-      return;
-    }
-    appendStepBody(authzReqStep, formatToken("Resource Token (aa-resource+jwt)", authzData.resource_token, authzData.resource_token_decoded));
-    const psMetadata = authzData.ps_metadata;
-    const resourceToken = authzData.resource_token;
-    const tokenEndpoint = psMetadata.token_endpoint;
-    const psRequestBody = {
-      resource_token: resourceToken,
-      capabilities: ["interaction"],
-      // Force the consent screen on every request so the demo flow shows
-      // the full UX even when the PS would otherwise auto-release from a
-      // cached binding (matches OIDC prompt=consent semantics).
-      prompt: "consent",
-      ...hints
-    };
-    const psReqStep = addLogStep(
-      fmt(copy("authorize.ps_token_request.label_template"), { path: new URL(tokenEndpoint).pathname }),
-      "pending",
-      desc("authorize.ps_token_request") + formatRequest("POST", tokenEndpoint, {
-        "Content-Type": "application/json",
+      `<p>Agent calls whoami with its agent_token. The resource knows the agent but has no user claims yet, so it returns 401 with a resource_token the agent can exchange at the Person Server.</p>` + formatRequest("GET", whoamiUrl, {
         "Signature-Input": 'sig=("@method" "@authority" "@path" "signature-key");created=...',
         "Signature": "sig=:...:",
         "Signature-Key": `sig=jwt;jwt="${agentToken?.substring(0, 20)}..."`
-      }, psRequestBody)
+      }, null)
     );
+    let resourceToken;
     try {
-      const signingJwk2 = await crypto.subtle.exportKey("jwk", keyPair.publicKey);
-      const psRes = await (0, import_httpsig.fetch)(tokenEndpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(psRequestBody),
-        signingKey: signingJwk2,
+      const res = await (0, import_httpsig.fetch)(whoamiUrl, {
+        method: "GET",
+        signingKey: signingJwk,
         signingCryptoKey: keyPair.privateKey,
         signatureKey: { type: "jwt", jwt: agentToken },
         components: ["@method", "@authority", "@path", "signature-key"]
       });
-      const responseHeaders = {};
+      const body = await res.json().catch(() => null);
+      const requirement = res.headers.get("aauth-requirement") || "";
+      const respHeaders = {};
+      if (requirement) respHeaders["aauth-requirement"] = requirement;
+      if (res.status === 401) {
+        resourceToken = parseInteractionHeader(requirement)["resource-token"];
+      }
+      if (res.status === 401 && resourceToken) {
+        resolveStep(step1, "success", `Agent \u2192 Whoami: GET ${whoamiPathDisplay} \u2192 401`);
+        appendStepBody(step1, formatResponse(401, respHeaders, body));
+        appendStepBody(step1, formatToken("Resource Token (aa-resource+jwt)", resourceToken, decodeJWTPayloadBrowser(resourceToken)));
+      } else {
+        resolveStep(step1, "error", `Agent \u2192 Whoami: GET ${whoamiPathDisplay} \u2192 ${res.status}`);
+        appendStepBody(step1, formatResponse(res.status, respHeaders, body) + anotherRequestButton());
+        return;
+      }
+    } catch (err) {
+      resolveStep(step1, "error", `Agent \u2192 Whoami: GET ${whoamiPathDisplay} (network error)`);
+      appendStepBody(step1, `<p style="color: var(--error)">${escapeHtml(err.message)}</p>`);
+      return;
+    }
+    const psMetadataUrl = `${bindingPs.replace(/\/$/, "")}/.well-known/aauth-person.json`;
+    let psMetadata;
+    try {
+      const metaRes = await fetch(psMetadataUrl);
+      psMetadata = await metaRes.json();
+      if (!metaRes.ok || !psMetadata?.token_endpoint) {
+        addLogStep(
+          `Person Server metadata fetch failed`,
+          "error",
+          formatResponse(metaRes.status, null, psMetadata) + anotherRequestButton()
+        );
+        return;
+      }
+    } catch (err) {
+      addLogStep(
+        `Person Server metadata fetch failed`,
+        "error",
+        `<p style="color: var(--error)">${escapeHtml(err.message)}</p>` + anotherRequestButton()
+      );
+      return;
+    }
+    const tokenEndpoint = psMetadata.token_endpoint;
+    const psPath = new URL(tokenEndpoint).pathname;
+    const psBody = {
+      resource_token: resourceToken,
+      capabilities: ["interaction"],
+      // Force the consent screen every time so the demo always shows the
+      // full UX — matches the bootstrap + old authorize flows.
+      prompt: "consent",
+      ...hints
+    };
+    const step2 = addLogStep(
+      `Agent \u2192 Person Server: POST ${psPath}`,
+      "pending",
+      `<p>Agent presents the resource_token and its agent_token to the Person Server's token endpoint. The PS either releases an auth_token immediately (cached consent) or returns a 202 with a consent prompt.</p>` + formatRequest("POST", tokenEndpoint, {
+        "Content-Type": "application/json",
+        "Signature-Input": 'sig=("@method" "@authority" "@path" "signature-key");created=...',
+        "Signature": "sig=:...:",
+        "Signature-Key": `sig=jwt;jwt="${agentToken?.substring(0, 20)}..."`
+      }, psBody)
+    );
+    let authToken;
+    try {
+      const psRes = await (0, import_httpsig.fetch)(tokenEndpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(psBody),
+        signingKey: signingJwk,
+        signingCryptoKey: keyPair.privateKey,
+        signatureKey: { type: "jwt", jwt: agentToken },
+        components: ["@method", "@authority", "@path", "signature-key"]
+      });
+      const psResBody = await psRes.json().catch(() => null);
+      const respHeaders = {};
       for (const key of ["location", "retry-after", "aauth-requirement"]) {
-        const val = psRes.headers.get(key);
-        if (val) responseHeaders[key] = val;
+        const v = psRes.headers.get(key);
+        if (v) respHeaders[key] = v;
       }
-      let psBody;
-      try {
-        psBody = await psRes.json();
-      } catch {
-        psBody = null;
-      }
-      const psPath = new URL(tokenEndpoint).pathname;
-      resolveStep(psReqStep, psRes.ok ? "success" : "error", fmt(copy("authorize.ps_token_request.label_resolved_template"), { path: psPath, status: psRes.status }));
-      if (psRes.status === 200 && psBody?.auth_token) {
-        appendStepBody(psReqStep, formatResponse(psRes.status, responseHeaders, psBody));
-        appendStepBody(psReqStep, formatAuthToken(psBody.auth_token) + anotherRequestButton());
+      if (psRes.status === 200 && psResBody?.auth_token) {
+        authToken = psResBody.auth_token;
+        resolveStep(step2, "success", `Agent \u2192 Person Server: POST ${psPath} \u2192 200`);
+        appendStepBody(step2, formatResponse(200, respHeaders, psResBody));
+        appendStepBody(step2, formatToken("Auth Token (aa-auth+jwt)", authToken, decodeJWTPayloadBrowser(authToken)));
       } else if (psRes.status === 202) {
-        appendStepBody(psReqStep, formatResponse(psRes.status, responseHeaders, psBody));
+        resolveStep(step2, "success", `Agent \u2192 Person Server: POST ${psPath} \u2192 202`);
+        appendStepBody(step2, formatResponse(202, respHeaders, psResBody));
         const reqHeader = psRes.headers.get("aauth-requirement") || "";
         const fromHeader = parseInteractionHeader(reqHeader);
         const interaction = {
-          requirement: fromHeader.requirement || psBody?.requirement,
-          code: fromHeader.code || psBody?.code,
+          requirement: fromHeader.requirement || psResBody?.requirement,
+          code: fromHeader.code || psResBody?.code,
           url: fromHeader.url || psMetadata.interaction_endpoint
         };
-        const pollUrl = psRes.headers.get("location") || psBody?.location;
+        const pollUrl = psRes.headers.get("location") || psResBody?.location;
         let pollStep = null;
         if (pollUrl) {
           const absolutePollUrl = new URL(pollUrl, tokenEndpoint).href;
-          const agentTokenForLog = localStorage.getItem("aauth-agent-token");
           pollStep = addLogStep(
-            fmt(copy("authorize.ps_pending_longpoll.label_template"), { path: new URL(absolutePollUrl).pathname }),
+            `Agent \u2192 Person Server: GET ${new URL(absolutePollUrl).pathname} (long-poll)`,
             "pending",
-            desc("authorize.ps_pending_longpoll") + formatRequest("GET", absolutePollUrl, {
+            `<p>Agent keeps a request open while you decide, instead of polling. The Person Server answers the moment you approve or deny.</p>` + formatRequest("GET", absolutePollUrl, {
               "Prefer": `wait=${POLL_WAIT_SECONDS}`,
               "Signature-Input": 'sig=("@method" "@authority" "@path" "signature-key");created=...',
               "Signature": "sig=:...:",
-              "Signature-Key": `sig=jwt;jwt="${agentTokenForLog?.substring(0, 20)}..."`
+              "Signature-Key": `sig=jwt;jwt="${agentToken?.substring(0, 20)}..."`
             }, null)
           );
         }
@@ -3935,20 +3942,58 @@ ${renderJSON(body)}`;
           desc("authorize.ps_consent_prompt") + renderInteraction(interaction, pollUrl, "authorize")
         );
         if (pollUrl) {
-          savePendingAuthorize({
-            pollUrl: new URL(pollUrl, tokenEndpoint).href,
-            tokenEndpoint,
-            psUrl,
-            scope
+          startAuthTokenPolling(pollUrl, tokenEndpoint, interactionStep, pollStep, {
+            onAuthToken: async (tokenFromPoll) => {
+              await retryWhoami(whoamiUrl, whoamiPathDisplay, tokenFromPoll, keyPair, signingJwk);
+            }
           });
-          startAuthTokenPolling(pollUrl, tokenEndpoint, interactionStep, pollStep);
         }
+        return;
       } else {
-        appendStepBody(psReqStep, formatResponse(psRes.status, responseHeaders, psBody));
+        resolveStep(step2, "error", `Agent \u2192 Person Server: POST ${psPath} \u2192 ${psRes.status}`);
+        appendStepBody(step2, formatResponse(psRes.status, respHeaders, psResBody) + anotherRequestButton());
+        return;
       }
     } catch (err) {
-      resolveStep(psReqStep, "error", fmt(copy("authorize.ps_token_request.label_error_network_template"), { path: new URL(tokenEndpoint).pathname }));
-      appendStepBody(psReqStep, `<p style="color: var(--error)">${escapeHtml(err.message)}</p>`);
+      resolveStep(step2, "error", `Agent \u2192 Person Server: POST ${psPath} (network error)`);
+      appendStepBody(step2, `<p style="color: var(--error)">${escapeHtml(err.message)}</p>`);
+      return;
+    }
+    await retryWhoami(whoamiUrl, whoamiPathDisplay, authToken, keyPair, signingJwk);
+  }
+  async function retryWhoami(whoamiUrl, whoamiPathDisplay, authToken, keyPair, signingJwk) {
+    const step = addLogStep(
+      `Agent \u2192 Whoami: GET ${whoamiPathDisplay}`,
+      "pending",
+      `<p>Same GET as before, now signed with the auth_token. Whoami verifies the token against the Person Server's JWKS, checks that 'whoami' is in scope, and returns the identity claims carried in the payload.</p>` + formatRequest("GET", whoamiUrl, {
+        "Signature-Input": 'sig=("@method" "@authority" "@path" "signature-key");created=...',
+        "Signature": "sig=:...:",
+        "Signature-Key": `sig=jwt;jwt="${authToken?.substring(0, 20)}..."`
+      }, null)
+    );
+    try {
+      const res = await (0, import_httpsig.fetch)(whoamiUrl, {
+        method: "GET",
+        signingKey: signingJwk,
+        signingCryptoKey: keyPair.privateKey,
+        signatureKey: { type: "jwt", jwt: authToken },
+        components: ["@method", "@authority", "@path", "signature-key"]
+      });
+      const body = await res.json().catch(() => null);
+      resolveStep(step, res.ok ? "success" : "error", `Agent \u2192 Whoami: GET ${whoamiPathDisplay} \u2192 ${res.status}`);
+      appendStepBody(step, formatResponse(res.status, null, body));
+      if (res.ok) {
+        addLogStep(
+          "Identity claims received",
+          "success",
+          `<p>These are the claims the Person Server released for the scopes you granted. Compare them against the decoded auth_token payload above \u2014 whoami returns them verbatim from the token.</p>` + tokenWrap(renderJSON(body)) + anotherRequestButton()
+        );
+      } else {
+        appendStepBody(step, anotherRequestButton());
+      }
+    } catch (err) {
+      resolveStep(step, "error", `Agent \u2192 Whoami: GET ${whoamiPathDisplay} (network error)`);
+      appendStepBody(step, `<p style="color: var(--error)">${escapeHtml(err.message)}</p>` + anotherRequestButton());
     }
   }
   function parseInteractionHeader(header) {
@@ -4068,12 +4113,6 @@ ${renderJSON(body)}`;
   }
   window.resumePendingInteraction = resumePendingInteraction;
   var PENDING_AUTHZ_KEY = "aauth-pending-authorize";
-  function savePendingAuthorize(state) {
-    try {
-      localStorage.setItem(PENDING_AUTHZ_KEY, JSON.stringify({ ...state, startedAt: Date.now() }));
-    } catch {
-    }
-  }
   function clearPendingAuthorize() {
     try {
       localStorage.removeItem(PENDING_AUTHZ_KEY);
@@ -4101,7 +4140,7 @@ ${renderJSON(body)}`;
     }
     if (_resumeAuthorizePolling) return false;
     _resumeAuthorizePolling = true;
-    setActiveLog("authz-log");
+    setActiveLog("resource-log");
     showLog();
     addLogSection(copy("sections.authorize_resumed"));
     const interactionStep = addLogStep(
@@ -4133,16 +4172,16 @@ ${renderJSON(body)}`;
     window.addEventListener("load", fireFallbackResume, { once: true });
   }
   var _authzPollRunning = false;
-  async function startAuthTokenPolling(pollUrl, baseUrl, interactionStep, pollStep) {
+  async function startAuthTokenPolling(pollUrl, baseUrl, interactionStep, pollStep, options = {}) {
     if (_authzPollRunning) return;
     _authzPollRunning = true;
     try {
-      await _startAuthTokenPollingImpl(pollUrl, baseUrl, interactionStep, pollStep);
+      await _startAuthTokenPollingImpl(pollUrl, baseUrl, interactionStep, pollStep, options);
     } finally {
       _authzPollRunning = false;
     }
   }
-  async function _startAuthTokenPollingImpl(pollUrl, baseUrl, interactionStep, pollStep) {
+  async function _startAuthTokenPollingImpl(pollUrl, baseUrl, interactionStep, pollStep, options = {}) {
     const absolutePollUrl = new URL(pollUrl, baseUrl).href;
     const keyPair = window.aauthEphemeral.get();
     const agentToken = localStorage.getItem("aauth-agent-token");
@@ -4187,11 +4226,15 @@ ${renderJSON(body)}`;
           clearPendingAuthorize();
           resolveStep(pollStep, "success", fmt(copy("authorize.ps_pending_longpoll.label_resolved_template"), { path: pollPath, status: 200 }));
           resolveStep(interactionStep, "success", "Interaction Completed");
-          addLogStep(
-            copy("authorize.authorization_granted.label"),
-            "success",
-            (body?.auth_token ? formatAuthToken(body.auth_token) : "") + anotherRequestButton()
-          );
+          if (options.onAuthToken && body?.auth_token) {
+            await options.onAuthToken(body.auth_token);
+          } else {
+            addLogStep(
+              copy("authorize.authorization_granted.label"),
+              "success",
+              (body?.auth_token ? formatAuthToken(body.auth_token) : "") + anotherRequestButton()
+            );
+          }
           return;
         }
         if (res.status === 404) {
@@ -4236,7 +4279,7 @@ ${renderJSON(body)}`;
     }
   }
   document.getElementById("bootstrap-btn")?.addEventListener("click", startBootstrap);
-  document.getElementById("authz-btn").addEventListener("click", startAuthorize);
+  document.getElementById("whoami-btn")?.addEventListener("click", startWhoami);
   document.addEventListener("click", (e) => {
     const helloBtn = e.target.closest(".interaction-actions .hello-btn");
     if (helloBtn) helloBtn.classList.add("hello-btn-loader");
@@ -4244,11 +4287,11 @@ ${renderJSON(body)}`;
   document.addEventListener("click", (e) => {
     const btn = e.target.closest(".js-scroll-authz");
     if (!btn) return;
-    const section = document.getElementById("authz-section");
+    const section = document.getElementById("resource-section");
     if (section) section.scrollIntoView({ behavior: "smooth", block: "start" });
-    setActiveLog("authz-log");
+    setActiveLog("resource-log");
     setTimeout(clearLog, 300);
-    document.querySelector("#authz-section .authz-actions")?.classList.remove("hidden");
+    document.querySelector("#resource-section .authz-actions")?.classList.remove("hidden");
   });
   async function callDemoResourceApi(authToken) {
     const endpoint = `${window.location.origin}/api/demo`;

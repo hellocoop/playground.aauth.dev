@@ -187,43 +187,64 @@
     </fieldset>
   </div>
 
-  <div class="section hidden" id="authz-section">
+  <!--
+    Resource Request section — one tab per demo resource. For now "whoami"
+    is the only tab; future tabs (e.g. r3) render their own scope picker +
+    URL preview + call button in their own panel. Panels share the
+    per-section protocol log so the round-trip for whichever tab is
+    active renders inline underneath.
+  -->
+  <div class="section hidden" id="resource-section">
     <fieldset class="section-box">
-      <legend>Authorization Request</legend>
-      <button id="reset-btn" type="button" class="btn-outline section-reset" title="Clear saved scopes and hints">Reset</button>
+      <legend>Resource Request</legend>
+      <button id="reset-btn" type="button" class="btn-outline section-reset" title="Clear saved scopes">Reset</button>
 
-      <details class="section-group" open>
-        <summary class="section-heading">
-          <span>Identity scopes</span>
-          <svg class="section-chevron" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5"/></svg>
-        </summary>
-        <div class="scope-grid" id="identity-scope-grid"></div>
-      </details>
-
-      <details class="section-group" open>
-        <summary class="section-heading">
-          <span>Resource scopes</span>
-          <svg class="section-chevron" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5"/></svg>
-        </summary>
-        <div class="scope-grid" id="resource-scope-grid"></div>
-      </details>
-
-      <div class="authz-actions">
-        <button id="authz-btn" type="button">Start authorization</button>
+      <div class="tab-row" role="tablist">
+        <button class="tab tab-active" type="button" role="tab" aria-selected="true" data-tab="whoami">whoami</button>
       </div>
 
-      <!-- Authorization's network calls log inline here — separate
-           instance from #bootstrap-log so each fieldset tells a
-           self-contained story of one protocol round trip. Section
-           headings added by addLogSection() are themselves
-           collapsible <details> disclosures. -->
-      <div class="protocol-log hidden" id="authz-log"></div>
+      <div class="tab-panel" data-panel="whoami">
+        <p class="tab-description">
+          Call
+          <a href="https://whoami.aauth.dev/.well-known/aauth-resource.json" target="_blank" rel="noopener">whoami.aauth.dev</a>
+          and get back the identity claims carried in your auth token.
+        </p>
+
+        <details class="section-group" open>
+          <summary class="section-heading">
+            <span>Identity scopes</span>
+            <svg class="section-chevron" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5"/></svg>
+          </summary>
+          <div class="scope-grid" id="identity-scope-grid"></div>
+        </details>
+
+        <!--
+          URL preview — live-updates as scope checkboxes toggle. Shows exactly
+          the GET the agent will sign + send, so the demo viewer sees what
+          went on the wire before clicking Call.
+        -->
+        <div class="section-group">
+          <div class="section-heading section-heading-static">
+            <span>Request URL</span>
+          </div>
+          <div class="readonly-field">
+            <span class="readonly-field-text mono" id="whoami-url-preview"></span>
+            <button class="copy-btn" type="button" data-copy-target="#whoami-url-preview" aria-label="Copy"></button>
+          </div>
+        </div>
+
+        <div class="authz-actions">
+          <button id="whoami-btn" type="button" class="hello-btn hello-btn-black-on-dark">ō&nbsp;&nbsp;&nbsp;Call whoami</button>
+        </div>
+      </div>
+
+      <div class="protocol-log hidden" id="resource-log"></div>
     </fieldset>
   </div>
 
   <!-- Legacy shared log container kept for any call sites not yet
-       retargeted. New code should target #bootstrap-log or #authz-log
-       via setActiveLog(). -->
+       retargeted. New code should target #bootstrap-log or
+       #resource-log via setActiveLog(). -->
   <div class="section hidden" id="log-section">
     <fieldset class="section-box">
       <legend>Protocol Log</legend>

@@ -581,12 +581,54 @@ details.log-section + details.log-section {
   border-top: 1px solid var(--border);
 }
 
-/* Start button under the Authorization Request form. Sized to the label
+/* Start button under the Resource Request form. Sized to the label
    rather than full-width so the primary action stays visually balanced
    with the rest of the form. Reset sits at the fieldset's top-right
    corner (see .section-reset). */
 .authz-actions {
   margin-top: 0.5rem;
+}
+
+/* Resource Request tabs — one per demo resource (whoami, r3, …). The
+   active tab carries a bottom underline in --text; inactive tabs fade
+   to --muted. Row overlaps the fieldset frame by 1px so the active
+   underline sits flush with the row's own bottom border. */
+.tab-row {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 1rem;
+}
+.tab {
+  background: transparent;
+  color: var(--muted);
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  padding: 0.45rem 0.9rem;
+  margin-bottom: -1px;
+  font-family: 'IBM Plex Mono', 'SF Mono', 'Fira Code', monospace;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 400;
+  cursor: pointer;
+}
+.tab:hover {
+  color: var(--text);
+  box-shadow: none;
+}
+.tab.tab-active {
+  color: var(--text);
+  border-bottom-color: var(--text);
+}
+
+/* Leading paragraph inside a tab panel — explains what this demo does
+   before the scope picker. Subdued so it reads as caption, not body. */
+.tab-description {
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin-bottom: 1rem;
 }
 
 /* Reset button pinned to the top-right of the Authorization Request

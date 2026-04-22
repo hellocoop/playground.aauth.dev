@@ -209,9 +209,9 @@ window.aauthWebAuthn = {
 function setAuthenticated(_label) {
   document.getElementById('bootstrap-controls')?.classList.add('hidden')
   const authSection = document.getElementById('auth-section')
-  const authzSection = document.getElementById('authz-section')
+  const resourceSection = document.getElementById('resource-section')
   authSection?.classList.remove('hidden')
-  authzSection?.classList.remove('hidden')
+  resourceSection?.classList.remove('hidden')
   // Defer one frame so layout settles (hidden → visible) before scroll.
   requestAnimationFrame(() => {
     authSection?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -219,12 +219,12 @@ function setAuthenticated(_label) {
 }
 
 // Pre-bootstrap state: show only the Bootstrap section's pre-ceremony
-// controls; hide Agent Identity and Authorization Request.
+// controls; hide Agent Identity and Resource Request.
 function setUnauthenticated() {
   document.getElementById('bootstrap-section')?.classList.remove('hidden')
   document.getElementById('bootstrap-controls')?.classList.remove('hidden')
   document.getElementById('auth-section')?.classList.add('hidden')
-  document.getElementById('authz-section')?.classList.add('hidden')
+  document.getElementById('resource-section')?.classList.add('hidden')
 }
 
 function displayAgentToken(data) {
@@ -426,26 +426,29 @@ function hydrateIdentityScopes() {
   grid.innerHTML = renderCol('Standard scopes', standard) + renderCol('Hellō scopes', extended)
 }
 
-async function hydrateResourceScopes() {
-  const grid = document.getElementById('resource-scope-grid')
-  if (!grid) return
-  let descriptions = {}
-  try {
-    const res = await fetch('/.well-known/aauth-resource.json')
-    const body = await res.json()
-    descriptions = body?.scope_descriptions || {}
-  } catch {
-    // Fall through — resource-scope grid renders empty.
-  }
-  const scopes = Object.keys(descriptions).sort()
-  // Pre-check everything the resource advertises. Saner default for a demo
-  // with a single scope (one click to Continue) and for most real flows
-  // (agent is asking for this set, the user will typically consent); user
-  // can uncheck anything they don't want to grant.
-  grid.innerHTML = scopes
-    .map((s) => renderScopeRow(s, descriptions[s], { checked: true }))
-    .join('')
+// Whoami URL preview — updates live as identity-scope checkboxes toggle
+// so the user sees exactly what GET the agent will sign and send. The
+// `whoami` resource scope is always present on the wire (the resource
+// requires it), so we don't surface it as a checkbox.
+const WHOAMI_ORIGIN = 'https://whoami.aauth.dev'
+window.WHOAMI_ORIGIN = WHOAMI_ORIGIN
+
+function getSelectedIdentityScopeList() {
+  return Array.from(document.querySelectorAll('#identity-scope-grid input[type="checkbox"]:checked'))
+    .map((cb) => cb.value)
 }
+
+function updateWhoamiUrlPreview() {
+  const el = document.getElementById('whoami-url-preview')
+  if (!el) return
+  const scopes = getSelectedIdentityScopeList()
+  const scopeParam = scopes.join(' ')
+  const url = scopeParam
+    ? `${WHOAMI_ORIGIN}/?scope=${encodeURIComponent(scopeParam)}`
+    : `${WHOAMI_ORIGIN}/`
+  el.textContent = url
+}
+window.updateWhoamiUrlPreview = updateWhoamiUrlPreview
 
 // ── Settings persistence ──
 // Mirrors the playground.hello.dev pattern: one localStorage key holds all
@@ -467,16 +470,6 @@ function loadSettings() {
     const boxes = document.querySelectorAll('#identity-scope-grid input[type="checkbox"]')
     for (const b of boxes) {
       if (b.disabled) continue // openid stays checked regardless
-      b.checked = set.has(b.value)
-    }
-  }
-
-  // Restore resource scope checkboxes.
-  if (Array.isArray(saved.resource_scopes)) {
-    const set = new Set(saved.resource_scopes)
-    const boxes = document.querySelectorAll('#resource-scope-grid input[type="checkbox"]')
-    for (const b of boxes) {
-      if (b.disabled) continue
       b.checked = set.has(b.value)
     }
   }
@@ -503,9 +496,6 @@ function saveSettings() {
   const identity_scopes = Array.from(
     document.querySelectorAll('#identity-scope-grid input[type="checkbox"]:checked')
   ).map(b => b.value)
-  const resource_scopes = Array.from(
-    document.querySelectorAll('#resource-scope-grid input[type="checkbox"]:checked')
-  ).map(b => b.value)
 
   const hints = {}
   const hints_enabled = []
@@ -518,7 +508,6 @@ function saveSettings() {
 
   localStorage.setItem(SETTINGS_KEY, JSON.stringify({
     identity_scopes,
-    resource_scopes,
     hints,
     hints_enabled,
   }))
@@ -533,28 +522,30 @@ function getCurrentPS() {
 window.getCurrentPS = getCurrentPS
 
 function wireSettingsAutosave() {
-  // Hints live in Bootstrap; scope grids live in Authorization. Watch both
-  // for any user edit.
-  const roots = ['bootstrap-section', 'authz-section']
+  // Hints live in Bootstrap; scopes live in the Resource Request tabs.
+  // Watch both for any user edit and re-save.
+  const roots = ['bootstrap-section', 'resource-section']
     .map((id) => document.getElementById(id))
     .filter(Boolean)
   for (const root of roots) {
     root.addEventListener('change', saveSettings)
     root.addEventListener('input', saveSettings)
   }
+  // Scope toggles also update the URL preview live.
+  document.getElementById('identity-scope-grid')
+    ?.addEventListener('change', updateWhoamiUrlPreview)
 }
 
 // ── Initialization ──
 
-// Hydrate both scope pickers BEFORE restoring saved selections —
+// Hydrate the identity scope picker BEFORE restoring saved selections —
 // loadSettings queries checkboxes by value, so they have to exist first.
-// Identity scopes are synchronous (hardcoded list); resource scopes are
-// async (from this resource's well-known metadata).
+// Then wire autosave and paint the initial whoami URL preview.
 ;(async () => {
   hydrateIdentityScopes()
-  await hydrateResourceScopes()
   loadSettings()
   wireSettingsAutosave()
+  updateWhoamiUrlPreview()
 })()
 
 // Copy button SVG icons — inlined for crisp rendering at any scale.
@@ -641,10 +632,11 @@ document.getElementById('bootstrap-reset-btn')?.addEventListener('click', async 
 })
 
 document.getElementById('reset-btn')?.addEventListener('click', () => {
-  if (!confirm('Reset authorization? This clears your scope selections, hints, and any pending authorization request. Your agent binding stays intact.')) return
+  if (!confirm('Reset resource request? This clears your scope selections and hints. Your agent binding stays intact.')) return
 
   localStorage.removeItem(SETTINGS_KEY)
   localStorage.removeItem('aauth-pending-authorize')
+  localStorage.removeItem('aauth-pending-whoami')
 
   location.reload()
 })
