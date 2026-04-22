@@ -3205,15 +3205,10 @@
   var persistKey = (id) => `aauth-log-${id}`;
   function persistActiveLog() {
     const log = currentLog();
-    if (!log || !PERSIST_LOG_IDS.includes(log.id)) {
-      console.log("[aauth-log] persist skipped", { hasLog: !!log, id: log?.id });
-      return;
-    }
+    if (!log || !PERSIST_LOG_IDS.includes(log.id)) return;
     try {
       localStorage.setItem(persistKey(log.id), log.innerHTML);
-      console.log("[aauth-log] persisted", log.id, log.innerHTML.length, "bytes");
-    } catch (e) {
-      console.log("[aauth-log] persist FAILED", log.id, e);
+    } catch {
     }
   }
   function clearPersistedLog(id) {
@@ -3221,16 +3216,13 @@
       localStorage.removeItem(persistKey(id));
     } catch {
     }
-    console.log("[aauth-log] cleared", id);
   }
   function clearAllPersistedLogs() {
     for (const id of PERSIST_LOG_IDS) clearPersistedLog(id);
   }
   function restorePersistedLogs() {
-    console.log("[aauth-log] restore called");
     for (const id of PERSIST_LOG_IDS) {
       const saved = localStorage.getItem(persistKey(id));
-      console.log("[aauth-log] restore", id, saved ? `${saved.length} bytes` : "EMPTY");
       if (!saved) continue;
       const log = document.getElementById(id);
       if (!log) continue;
@@ -3508,11 +3500,15 @@ ${renderJSON(body)}`;
         "Signature-Key": `sig=hwk;kty="${publicJwk.kty}";crv="${publicJwk.crv}";x="${publicJwk.x}"`
       }, null)
     );
-    addLogStep(
+    const consentStep = addLogStep(
       copy("bootstrap.ps_consent_prompt.label"),
       "pending",
       desc("bootstrap.ps_consent_prompt") + `<div class="interaction-box interaction-box-centered"><p class="interaction-heading">Redirecting to Person Server for consent\u2026</p></div>`
     );
+    if (consentStep) {
+      consentStep.dataset.consentKey = "bootstrap";
+      persistActiveLog();
+    }
     savePendingBootstrap({
       pollUrl: absolutePollUrl,
       bootstrapEndpoint,
@@ -4107,6 +4103,10 @@ ${renderJSON(body)}`;
           "pending",
           desc("authorize.ps_consent_prompt") + renderInteraction(interaction, pollUrl, "authorize")
         );
+        if (interactionStep) {
+          interactionStep.dataset.consentKey = "whoami";
+          persistActiveLog();
+        }
         if (pollUrl) {
           const absolutePollUrl = new URL(pollUrl, tokenEndpoint).href;
           savePendingAuthorize({
@@ -4274,11 +4274,20 @@ ${renderJSON(body)}`;
       addLogSection(copy("sections.bootstrap"));
     }
     const publicJwk = await crypto.subtle.exportKey("jwk", kp.publicKey);
-    const interactionStep = addLogStep(
-      copy("bootstrap_resumed.ps_consent_prompt.label"),
-      "pending",
-      desc("bootstrap_resumed.ps_consent_prompt") + `<div class="token-display">Polling ${escapeHtml(saved.pollUrl)}</div>`
-    );
+    let interactionStep = log.querySelector('[data-consent-key="bootstrap"]');
+    if (interactionStep) {
+      const body = interactionStep.querySelector(".log-step-body");
+      if (body) {
+        body.innerHTML = desc("bootstrap_resumed.ps_consent_prompt") + `<div class="token-display">Polling ${escapeHtml(saved.pollUrl)}</div>`;
+      }
+      persistActiveLog();
+    } else {
+      interactionStep = addLogStep(
+        copy("bootstrap_resumed.ps_consent_prompt.label"),
+        "pending",
+        desc("bootstrap_resumed.ps_consent_prompt") + `<div class="token-display">Polling ${escapeHtml(saved.pollUrl)}</div>`
+      );
+    }
     const pending2 = await pollForBootstrapToken(saved.pollUrl, kp, publicJwk, interactionStep);
     if (!pending2) return true;
     addLogStep(
@@ -4350,11 +4359,21 @@ ${renderJSON(body)}`;
     if (!log.querySelector(":scope > details.log-section")) {
       addLogSection(copy(isNotes ? "sections.notes" : "sections.whoami"));
     }
-    const interactionStep = addLogStep(
-      copy(`${promptKey}.label`),
-      "pending",
-      desc(promptKey) + `<div class="token-display">Polling ${escapeHtml(saved.pollUrl)}</div>`
-    );
+    const consentKey = isNotes ? "notes" : "whoami";
+    let interactionStep = log.querySelector(`[data-consent-key="${consentKey}"]`);
+    if (interactionStep) {
+      const body = interactionStep.querySelector(".log-step-body");
+      if (body) {
+        body.innerHTML = desc(promptKey) + `<div class="token-display">Polling ${escapeHtml(saved.pollUrl)}</div>`;
+      }
+      persistActiveLog();
+    } else {
+      interactionStep = addLogStep(
+        copy(`${promptKey}.label`),
+        "pending",
+        desc(promptKey) + `<div class="token-display">Polling ${escapeHtml(saved.pollUrl)}</div>`
+      );
+    }
     let options = {};
     if (isNotes) {
       options = {
@@ -4823,6 +4842,10 @@ ${renderJSON(body)}`;
           "pending",
           desc("notes.ps_consent_prompt") + renderInteraction(interaction, pollUrl, "authorize")
         );
+        if (interactionStep) {
+          interactionStep.dataset.consentKey = "notes";
+          persistActiveLog();
+        }
         if (pollUrl) {
           const absolutePollUrl = new URL(pollUrl, tokenEndpoint).href;
           savePendingAuthorize({

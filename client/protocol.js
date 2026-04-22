@@ -147,21 +147,12 @@ const persistKey = (id) => `aauth-log-${id}`
 
 function persistActiveLog() {
   const log = currentLog()
-  if (!log || !PERSIST_LOG_IDS.includes(log.id)) {
-    console.log('[aauth-log] persist skipped', { hasLog: !!log, id: log?.id })
-    return
-  }
-  try {
-    localStorage.setItem(persistKey(log.id), log.innerHTML)
-    console.log('[aauth-log] persisted', log.id, log.innerHTML.length, 'bytes')
-  } catch (e) {
-    console.log('[aauth-log] persist FAILED', log.id, e)
-  }
+  if (!log || !PERSIST_LOG_IDS.includes(log.id)) return
+  try { localStorage.setItem(persistKey(log.id), log.innerHTML) } catch {}
 }
 
 function clearPersistedLog(id) {
   try { localStorage.removeItem(persistKey(id)) } catch {}
-  console.log('[aauth-log] cleared', id)
 }
 
 function clearAllPersistedLogs() {
@@ -169,10 +160,8 @@ function clearAllPersistedLogs() {
 }
 
 function restorePersistedLogs() {
-  console.log('[aauth-log] restore called')
   for (const id of PERSIST_LOG_IDS) {
     const saved = localStorage.getItem(persistKey(id))
-    console.log('[aauth-log] restore', id, saved ? `${saved.length} bytes` : 'EMPTY')
     if (!saved) continue
     const log = document.getElementById(id)
     if (!log) continue
@@ -542,10 +531,19 @@ async function runBootstrap(psUrl, hints) {
   // The card would add a second click with no new decision, and its
   // URL is the one we're about to navigate to anyway. QR-code / other-
   // device paths live on resource calls (whoami), not bootstrap.
-  addLogStep(copy('bootstrap.ps_consent_prompt.label'), 'pending',
+  //
+  // Tag the step with data-consent-key so resumePendingInteraction can
+  // find it on the way back and reuse it — otherwise the restored
+  // "Redirecting to Person Server…" card lingers alongside the
+  // resume-side poll step, reading as two copies of the same thing.
+  const consentStep = addLogStep(copy('bootstrap.ps_consent_prompt.label'), 'pending',
     desc('bootstrap.ps_consent_prompt') +
     `<div class="interaction-box interaction-box-centered"><p class="interaction-heading">Redirecting to Person Server for consent…</p></div>`
   )
+  if (consentStep) {
+    consentStep.dataset.consentKey = 'bootstrap'
+    persistActiveLog()
+  }
   savePendingBootstrap({
     pollUrl: absolutePollUrl,
     bootstrapEndpoint,
@@ -1286,6 +1284,13 @@ async function runWhoamiCall(whoamiUrl, bindingPs, hints) {
         desc('authorize.ps_consent_prompt') +
         renderInteraction(interaction, pollUrl, 'authorize')
       )
+      // Tag so resumePendingAuthorize can reuse this step on return
+      // from the PS instead of leaving the stale "Continue with Hellō /
+      // QR" card alongside the fresh poll step.
+      if (interactionStep) {
+        interactionStep.dataset.consentKey = 'whoami'
+        persistActiveLog()
+      }
 
       if (pollUrl) {
         // Persist enough state to resume the flow after a same-tab
@@ -1508,10 +1513,27 @@ async function resumePendingInteraction() {
     addLogSection(copy('sections.bootstrap'))
   }
   const publicJwk = await crypto.subtle.exportKey('jwk', kp.publicKey)
-  const interactionStep = addLogStep(copy('bootstrap_resumed.ps_consent_prompt.label'), 'pending',
-    desc('bootstrap_resumed.ps_consent_prompt') +
-    `<div class="token-display">Polling ${escapeHtml(saved.pollUrl)}</div>`
-  )
+  // Reuse the pre-redirect consent-prompt step if the restored log has
+  // it — swap its "Redirecting to Person Server…" card body out for
+  // the "Polling" body and use its DOM node as the interactionStep
+  // reference. Creating a second step would leave the stale
+  // "Redirecting…" card floating above the poll, confusing the reader
+  // on return from the PS. Fallback to a fresh step if the tag isn't
+  // present (persistence disabled or log was cleared mid-flow).
+  let interactionStep = log.querySelector('[data-consent-key="bootstrap"]')
+  if (interactionStep) {
+    const body = interactionStep.querySelector('.log-step-body')
+    if (body) {
+      body.innerHTML = desc('bootstrap_resumed.ps_consent_prompt') +
+        `<div class="token-display">Polling ${escapeHtml(saved.pollUrl)}</div>`
+    }
+    persistActiveLog()
+  } else {
+    interactionStep = addLogStep(copy('bootstrap_resumed.ps_consent_prompt.label'), 'pending',
+      desc('bootstrap_resumed.ps_consent_prompt') +
+      `<div class="token-display">Polling ${escapeHtml(saved.pollUrl)}</div>`
+    )
+  }
   const pending = await pollForBootstrapToken(saved.pollUrl, kp, publicJwk, interactionStep)
   if (!pending) return true
   addLogStep(copy('bootstrap.ps_bootstrap_token_received.label'), 'success',
@@ -1626,10 +1648,27 @@ async function resumePendingAuthorize() {
   if (!log.querySelector(':scope > details.log-section')) {
     addLogSection(copy(isNotes ? 'sections.notes' : 'sections.whoami'))
   }
-  const interactionStep = addLogStep(copy(`${promptKey}.label`), 'pending',
-    desc(promptKey) +
-    `<div class="token-display">Polling ${escapeHtml(saved.pollUrl)}</div>`
-  )
+  // Reuse the pre-redirect "Continue with Hellō / QR" step if the
+  // restored log has it: swap its interaction-box body out for the
+  // Polling message so the single step carries through approval.
+  // Without this, the stale Continue+QR card sits next to the new
+  // poll step, and the broken QR (canvas lost across same-origin
+  // navigation) reads as an error.
+  const consentKey = isNotes ? 'notes' : 'whoami'
+  let interactionStep = log.querySelector(`[data-consent-key="${consentKey}"]`)
+  if (interactionStep) {
+    const body = interactionStep.querySelector('.log-step-body')
+    if (body) {
+      body.innerHTML = desc(promptKey) +
+        `<div class="token-display">Polling ${escapeHtml(saved.pollUrl)}</div>`
+    }
+    persistActiveLog()
+  } else {
+    interactionStep = addLogStep(copy(`${promptKey}.label`), 'pending',
+      desc(promptKey) +
+      `<div class="token-display">Polling ${escapeHtml(saved.pollUrl)}</div>`
+    )
+  }
 
   // On auth_token arrival, route to the flow-specific handler:
   //   notes  → finalizeNotesAuthToken persists the token and mounts the
@@ -2205,6 +2244,10 @@ async function runNotesAuthorize(operations, bindingPs, hints) {
       }
       const interactionStep = addLogStep(copy('notes.ps_consent_prompt.label'), 'pending',
         desc('notes.ps_consent_prompt') + renderInteraction(interaction, pollUrl, 'authorize'))
+      if (interactionStep) {
+        interactionStep.dataset.consentKey = 'notes'
+        persistActiveLog()
+      }
 
       if (pollUrl) {
         const absolutePollUrl = new URL(pollUrl, tokenEndpoint).href
