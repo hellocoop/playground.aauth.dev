@@ -304,16 +304,22 @@ function appendStepBody(step, html) {
 }
 
 function anotherRequestButton() {
-  // Re-showing the resource-section's own Call button is deferred to
-  // the .js-scroll-authz click handler — the two CTAs never want to be
-  // on screen at the same time. Another Request is the only path back
-  // to a fresh form while the flow's terminal state is visible.
+  // Terminal-state rendering — the flow has completed or failed. Also
+  // re-show the resource-section's Call buttons (hidden during the
+  // flow) so the user can kick off the same tab again, switch tabs,
+  // or click Another Authorization Request. All three are valid next
+  // actions and we want them on screen together rather than
+  // gatekeeping behind the Another Request click.
   //
   // Persisted-log lifecycle: we deliberately DON'T clear on terminal.
   // The trail stays in localStorage so a later page reload still
   // shows the completed flow (collapsed). Clears happen only on Reset
   // or when a new flow starts (clearLog in startBootstrap /
   // startWhoami / startNotes).
+  queueMicrotask(() => {
+    document.querySelectorAll('#resource-section .authz-actions')
+      .forEach((el) => el.classList.remove('hidden'))
+  })
   return `<div class="log-actions"><button type="button" class="btn-outline js-scroll-authz">${escapeHtml(copy('ui.another_request_button'))}</button></div>`
 }
 

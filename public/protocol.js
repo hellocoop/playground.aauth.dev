@@ -3319,6 +3319,9 @@
     persistActiveLog();
   }
   function anotherRequestButton() {
+    queueMicrotask(() => {
+      document.querySelectorAll("#resource-section .authz-actions").forEach((el) => el.classList.remove("hidden"));
+    });
     return `<div class="log-actions"><button type="button" class="btn-outline js-scroll-authz">${escapeHtml(copy("ui.another_request_button"))}</button></div>`;
   }
   function tokenWrap(innerHtml, extraClass = "") {

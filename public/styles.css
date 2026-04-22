@@ -263,8 +263,12 @@ a { color: var(--accent); }
 .section-group { margin-bottom: 1rem; }
 /* Sibling spacing between the two Agent Token details rows — without
    this they butt right against each other and the "Decoded Payload"
-   heading reads as if it's part of the Agent Token block above. */
-#agent-token-details + #decoded-payload-details {
+   heading reads as if it's part of the Agent Token block above.
+   Scoped to the stash position (direct children of
+   #bootstrap-artifacts, reload path); inside a log-section, the
+   padding-bottom on #agent-token-details handles the gap without
+   breaking the green left-trace. */
+#bootstrap-artifacts > #agent-token-details + #decoded-payload-details {
   margin-top: 0.75rem;
 }
 .section-group:last-child { margin-bottom: 0; }
@@ -596,6 +600,13 @@ a.hello-btn { text-decoration: none; }
    reads as part of the log block instead of a separate outcome. */
 #auth-section:not(.hidden) {
   margin-top: 1rem;
+}
+/* When the Bootstrap log-section is collapsed, the summary alone
+   doesn't need the full 1rem breathing room — tighten the gap so the
+   reload state reads compactly instead of leaving a lot of empty
+   space between "BOOTSTRAP" and Agent Identity. */
+#bootstrap-artifacts:has(details.log-section:not([open])) + #auth-section {
+  margin-top: 0.25rem;
 }
 
 /* Each addLogSection() call emits a <details class="log-section"> whose
