@@ -3766,7 +3766,12 @@ ${renderJSON(body)}`;
     window.aauthBinding.clearBinding();
     localStorage.removeItem("aauth-agent-token");
     window.aauthUI?.setUnauthenticated?.();
-    await runBootstrap(psUrl, hints);
+    const controls = document.getElementById("bootstrap-controls");
+    controls?.classList.add("hidden");
+    const result = await runBootstrap(psUrl, hints);
+    if (!result) {
+      controls?.classList.remove("hidden");
+    }
   }
   async function startWhoami() {
     const { bindingPs } = window.aauthBinding.get();

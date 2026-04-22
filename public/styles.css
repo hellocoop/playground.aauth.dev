@@ -487,6 +487,16 @@ a.hello-btn { text-decoration: none; }
   text-transform: uppercase;
   letter-spacing: 0.02em;
   color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+/* Checkmark reads as a visual milestone — bump it up vs the 0.75rem
+   label so it's legible at a glance without competing with the
+   uppercase "BOOTSTRAP COMPLETE" text alongside it. */
+.section-legend-bottom .step-status {
+  font-size: 1.05rem;
+  line-height: 1;
 }
 
 /* Text-link "Copy link" under the QR. Reuses .copy-btn so the existing
@@ -539,14 +549,16 @@ a.hello-btn { text-decoration: none; }
 }
 
 /* Agent Identity panel (#auth-section) hangs right below #bootstrap-log
-   inside the same fieldset. When a bootstrap ceremony just ran, the log
-   above it has content and the log div is visible — we want a 1rem gap
-   between end-of-log and the panel. On a page reload the log is empty
-   and `.hidden`, so #auth-section is visually the first item in the
-   section and any top margin would read as stray padding. Apply the
-   gap only when the preceding log is actually visible. */
-.protocol-log:not(.hidden) + #auth-section {
-  margin-top: 1rem;
+   inside the same fieldset. Carries a success-colored left border so
+   the green protocol-trace line continues unbroken from the last
+   bootstrap step all the way down to the "Bootstrap complete" legend —
+   the ceremony reads as one contiguous trace, not a trace + a separate
+   card. padding-top (vs margin-top) keeps the border contiguous with
+   the last log-step's border above. */
+#auth-section:not(.hidden) {
+  border-left: 3px solid var(--success);
+  padding-left: 1rem;
+  padding-top: 1rem;
 }
 
 /* Each addLogSection() call emits a <details class="log-section"> whose

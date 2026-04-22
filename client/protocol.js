@@ -925,13 +925,23 @@ async function startBootstrap() {
   window.aauthBinding.clearBinding()
   localStorage.removeItem('aauth-agent-token')
 
-  // Reset the inline Agent Identity + Authorization Request UI back
+  // Reset the inline Agent Identity + Resource Request UI back
   // to its pre-bootstrap state. Without this, a second click of the
   // Bootstrap agent button leaves the previous "Bound as …" line and
   // the old agent-token panels on screen while the new ceremony runs.
   window.aauthUI?.setUnauthenticated?.()
 
-  await runBootstrap(psUrl, hints)
+  // Hide the pre-bootstrap controls (PS picker, hints, Bootstrap CTA)
+  // during the flow so the log gets the user's attention. On success,
+  // setAuthenticated() keeps them hidden; on failure, we re-show so
+  // the user can retry without needing Reset.
+  const controls = document.getElementById('bootstrap-controls')
+  controls?.classList.add('hidden')
+
+  const result = await runBootstrap(psUrl, hints)
+  if (!result) {
+    controls?.classList.remove('hidden')
+  }
 }
 
 
