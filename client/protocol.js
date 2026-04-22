@@ -292,6 +292,17 @@ function anotherRequestButton() {
   // the .js-scroll-authz click handler — the two CTAs never want to be
   // on screen at the same time. Another Request is the only path back
   // to a fresh form while the flow's terminal state is visible.
+  //
+  // Terminal UI also means "flow is done" — schedule a persisted-log
+  // clear via microtask so the next page reload starts from the
+  // default state. The microtask runs after the enclosing addLogStep's
+  // synchronous persistActiveLog, overwriting that snapshot with an
+  // empty entry. We capture the active log id NOW because by the time
+  // the microtask fires the active log may have been reset.
+  const activeId = currentLog()?.id
+  if (activeId && PERSIST_LOG_IDS.includes(activeId)) {
+    queueMicrotask(() => clearPersistedLog(activeId))
+  }
   return `<div class="log-actions"><button type="button" class="btn-outline js-scroll-authz">${escapeHtml(copy('ui.another_request_button'))}</button></div>`
 }
 
@@ -827,6 +838,13 @@ async function completeAgentServerBootstrap(bootstrapToken, publicJwk, keyPair, 
       appendStepBody(announceStep, `<p style="color: var(--error)">${escapeHtml(err.message)}</p>`)
     }
   }
+
+  // Bootstrap ceremony is fully terminal here (success or failure
+  // returned earlier). Clear the persisted log — the success path
+  // doesn't render anotherRequestButton, so its auto-clear microtask
+  // wouldn't fire. A microtask runs after the last in-flight persist
+  // from the announce block above.
+  queueMicrotask(() => clearPersistedLog('bootstrap-log'))
 
   return { result }
 }

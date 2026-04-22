@@ -3225,6 +3225,10 @@
     persistActiveLog();
   }
   function anotherRequestButton() {
+    const activeId = currentLog()?.id;
+    if (activeId && PERSIST_LOG_IDS.includes(activeId)) {
+      queueMicrotask(() => clearPersistedLog(activeId));
+    }
     return `<div class="log-actions"><button type="button" class="btn-outline js-scroll-authz">${escapeHtml(copy("ui.another_request_button"))}</button></div>`;
   }
   function tokenWrap(innerHtml, extraClass = "") {
@@ -3669,6 +3673,7 @@ ${renderJSON(body)}`;
         appendStepBody(announceStep, `<p style="color: var(--error)">${escapeHtml(err.message)}</p>`);
       }
     }
+    queueMicrotask(() => clearPersistedLog("bootstrap-log"));
     return { result };
   }
   async function deriveBindingKeyBrowser(psUrl, userSub) {
