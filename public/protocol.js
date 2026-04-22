@@ -3178,9 +3178,6 @@
     body.insertAdjacentHTML("beforeend", html);
   }
   function anotherRequestButton() {
-    Promise.resolve().then(() => {
-      document.querySelector("#resource-section .authz-actions")?.classList.remove("hidden");
-    });
     return `<div class="log-actions"><button type="button" class="btn-outline js-scroll-authz">${escapeHtml(copy("ui.another_request_button"))}</button></div>`;
   }
   function tokenWrap(innerHtml, extraClass = "") {

@@ -218,13 +218,10 @@ function appendStepBody(step, html) {
 }
 
 function anotherRequestButton() {
-  // Flow has reached a terminal state — re-show the resource-section's
-  // Call button so the user has both paths back to a fresh request
-  // (scroll up to the form, or click the Another button inline). Queued
-  // as a microtask so it runs after the caller inserts our HTML.
-  Promise.resolve().then(() => {
-    document.querySelector('#resource-section .authz-actions')?.classList.remove('hidden')
-  })
+  // Re-showing the resource-section's own Call button is deferred to
+  // the .js-scroll-authz click handler — the two CTAs never want to be
+  // on screen at the same time. Another Request is the only path back
+  // to a fresh form while the flow's terminal state is visible.
   return `<div class="log-actions"><button type="button" class="btn-outline js-scroll-authz">${escapeHtml(copy('ui.another_request_button'))}</button></div>`
 }
 
