@@ -554,11 +554,17 @@ a.hello-btn { text-decoration: none; }
   margin-top: 1rem;
 }
 
-/* Green protocol-trace line wrapping the whole Bootstrap output — step
-   log + Agent Token + Decoded Payload. Agent Identity intentionally
-   sits outside this wrapper so the line marks only the ceremony's
-   trace, not its final result. */
-#bootstrap-artifacts:not(.hidden) {
+/* Green protocol-trace line wrapping the Bootstrap output — step log +
+   Agent Token + Decoded Payload. Agent Identity intentionally sits
+   outside this wrapper so the line marks only the ceremony's trace,
+   not its final result.
+
+   Only show the line while the ceremony's log is on screen (active
+   flow, or persisted-log restored mid-flow). On a clean reload the
+   wrapper holds just the two token <details>, and the line + top
+   padding would read as a stray artifact; :has suppresses both when
+   #bootstrap-log is hidden. */
+#bootstrap-artifacts:not(.hidden):has(#bootstrap-log:not(.hidden)) {
   border-left: 3px solid var(--success);
   padding-left: 1rem;
   padding-top: 1rem;
