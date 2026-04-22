@@ -147,12 +147,21 @@ const persistKey = (id) => `aauth-log-${id}`
 
 function persistActiveLog() {
   const log = currentLog()
-  if (!log || !PERSIST_LOG_IDS.includes(log.id)) return
-  try { localStorage.setItem(persistKey(log.id), log.innerHTML) } catch {}
+  if (!log || !PERSIST_LOG_IDS.includes(log.id)) {
+    console.log('[aauth-log] persist skipped', { hasLog: !!log, id: log?.id })
+    return
+  }
+  try {
+    localStorage.setItem(persistKey(log.id), log.innerHTML)
+    console.log('[aauth-log] persisted', log.id, log.innerHTML.length, 'bytes')
+  } catch (e) {
+    console.log('[aauth-log] persist FAILED', log.id, e)
+  }
 }
 
 function clearPersistedLog(id) {
   try { localStorage.removeItem(persistKey(id)) } catch {}
+  console.log('[aauth-log] cleared', id)
 }
 
 function clearAllPersistedLogs() {
@@ -160,8 +169,10 @@ function clearAllPersistedLogs() {
 }
 
 function restorePersistedLogs() {
+  console.log('[aauth-log] restore called')
   for (const id of PERSIST_LOG_IDS) {
     const saved = localStorage.getItem(persistKey(id))
+    console.log('[aauth-log] restore', id, saved ? `${saved.length} bytes` : 'EMPTY')
     if (!saved) continue
     const log = document.getElementById(id)
     if (!log) continue
