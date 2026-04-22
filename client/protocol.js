@@ -436,9 +436,15 @@ async function runBootstrap(psUrl, hints) {
       'Signature-Key': `sig=hwk;kty="${publicJwk.kty}";crv="${publicJwk.crv}";x="${publicJwk.x}"`,
     }, null)
   )
-  const interactionStep = addLogStep(copy('bootstrap.ps_consent_prompt.label'), 'pending',
+  // Log the consent step, then auto-redirect to the PS — we skip
+  // rendering the intermediate "Continue with Hellō" card because the
+  // initial Bootstrap with Hellō click already expressed user intent.
+  // The card would add a second click with no new decision, and its
+  // URL is the one we're about to navigate to anyway. QR-code / other-
+  // device paths live on resource calls (whoami), not bootstrap.
+  addLogStep(copy('bootstrap.ps_consent_prompt.label'), 'pending',
     desc('bootstrap.ps_consent_prompt') +
-    renderInteraction(interactionParams, absolutePollUrl)
+    `<div class="interaction-box"><p class="interaction-heading">Redirecting to Person Server for consent…</p></div>`
   )
   savePendingBootstrap({
     pollUrl: absolutePollUrl,
@@ -446,9 +452,22 @@ async function runBootstrap(psUrl, hints) {
     psUrl,
   })
 
-  const pending = await pollForBootstrapToken(absolutePollUrl, keyPair, publicJwk, interactionStep, pollStep)
-  trace('pollForBootstrapToken returned', pending ? { hasToken: !!pending.bootstrap_token } : null)
-  if (!pending) return false
+  if (interactionParams.url && interactionParams.code) {
+    const callbackUrl = `${window.location.origin}/`
+    const sameDeviceUrl = `${interactionParams.url}?code=${encodeURIComponent(interactionParams.code)}&callback=${encodeURIComponent(callbackUrl)}`
+    window.location.href = sameDeviceUrl
+    // Navigation is asynchronous; returning truthy so startBootstrap
+    // doesn't re-show the controls during the tiny window before the
+    // tab actually navigates away.
+    return true
+  }
+
+  // No interaction URL (spec violation by the PS) — fall through and
+  // log the bad state so the user isn't stuck on an empty screen.
+  addLogStep('Person Server returned no interaction URL', 'error',
+    '<p>Bootstrap cannot continue — PS response lacks interaction_endpoint and aauth-requirement url.</p>' +
+    anotherRequestButton())
+  return false
 
   addLogStep(copy('bootstrap.ps_bootstrap_token_received.label'), 'success',
     desc('bootstrap.ps_bootstrap_token_received') +

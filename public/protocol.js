@@ -3358,19 +3358,28 @@ ${renderJSON(body)}`;
         "Signature-Key": `sig=hwk;kty="${publicJwk.kty}";crv="${publicJwk.crv}";x="${publicJwk.x}"`
       }, null)
     );
-    const interactionStep = addLogStep(
+    addLogStep(
       copy("bootstrap.ps_consent_prompt.label"),
       "pending",
-      desc("bootstrap.ps_consent_prompt") + renderInteraction(interactionParams, absolutePollUrl)
+      desc("bootstrap.ps_consent_prompt") + `<div class="interaction-box"><p class="interaction-heading">Redirecting to Person Server for consent\u2026</p></div>`
     );
     savePendingBootstrap({
       pollUrl: absolutePollUrl,
       bootstrapEndpoint,
       psUrl
     });
-    const pending = await pollForBootstrapToken(absolutePollUrl, keyPair, publicJwk, interactionStep, pollStep);
-    trace("pollForBootstrapToken returned", pending ? { hasToken: !!pending.bootstrap_token } : null);
-    if (!pending) return false;
+    if (interactionParams.url && interactionParams.code) {
+      const callbackUrl = `${window.location.origin}/`;
+      const sameDeviceUrl = `${interactionParams.url}?code=${encodeURIComponent(interactionParams.code)}&callback=${encodeURIComponent(callbackUrl)}`;
+      window.location.href = sameDeviceUrl;
+      return true;
+    }
+    addLogStep(
+      "Person Server returned no interaction URL",
+      "error",
+      "<p>Bootstrap cannot continue \u2014 PS response lacks interaction_endpoint and aauth-requirement url.</p>" + anotherRequestButton()
+    );
+    return false;
     addLogStep(
       copy("bootstrap.ps_bootstrap_token_received.label"),
       "success",
@@ -4113,14 +4122,14 @@ ${renderJSON(body)}`;
       "pending",
       desc("bootstrap_resumed.ps_consent_prompt") + `<div class="token-display">Polling ${escapeHtml(saved.pollUrl)}</div>`
     );
-    const pending = await pollForBootstrapToken(saved.pollUrl, kp, publicJwk, interactionStep);
-    if (!pending) return true;
+    const pending2 = await pollForBootstrapToken(saved.pollUrl, kp, publicJwk, interactionStep);
+    if (!pending2) return true;
     addLogStep(
       copy("bootstrap.ps_bootstrap_token_received.label"),
       "success",
-      desc("bootstrap.ps_bootstrap_token_received") + formatToken("Bootstrap Token (aa-bootstrap+jwt)", pending.bootstrap_token, decodeJWTPayloadBrowser(pending.bootstrap_token))
+      desc("bootstrap.ps_bootstrap_token_received") + formatToken("Bootstrap Token (aa-bootstrap+jwt)", pending2.bootstrap_token, decodeJWTPayloadBrowser(pending2.bootstrap_token))
     );
-    await completeAgentServerBootstrap(pending.bootstrap_token, publicJwk, kp, { psUrl: saved.psUrl, psBootstrapEndpoint: saved.bootstrapEndpoint });
+    await completeAgentServerBootstrap(pending2.bootstrap_token, publicJwk, kp, { psUrl: saved.psUrl, psBootstrapEndpoint: saved.bootstrapEndpoint });
     return true;
   }
   window.resumePendingInteraction = resumePendingInteraction;
