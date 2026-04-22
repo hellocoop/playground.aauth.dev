@@ -292,6 +292,13 @@ a { color: var(--accent); }
 .section-group > .section-heading.section-heading-static {
   cursor: default;
 }
+/* Caption appended to a heading — e.g. "Request Body  Uses R3 (Rich…)".
+   Reads as subdued metadata next to the bold heading, like a tag. */
+.section-heading-note {
+  font-size: 0.8rem;
+  font-weight: 400;
+  color: var(--muted);
+}
 .ps-url {
   color: var(--text);
 }

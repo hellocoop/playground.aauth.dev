@@ -212,8 +212,8 @@
       <div class="tab-panel" data-panel="whoami">
         <p class="tab-description">
           Call
-          <a href="https://whoami.aauth.dev/.well-known/aauth-resource.json" target="_blank" rel="noopener">whoami.aauth.dev</a>
-          and get back the identity claims carried in your auth token.
+          <a class="ext-link" href="https://whoami.aauth.dev/.well-known/aauth-resource.json" target="_blank" rel="noopener">whoami.aauth.dev<svg class="ext-link-arrow" width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true"><path d="M2 8 L8 2 M8 2 H3.5 M8 2 V6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+          and return the identity claim carried in your auth token.
         </p>
 
         <details class="section-group" open>
@@ -272,6 +272,7 @@
         <div class="section-group">
           <div class="section-heading section-heading-static">
             <span>Request Body</span>
+            <span class="section-heading-note">Uses R3 (Rich Resource Requests)</span>
           </div>
           <div class="readonly-field">
             <pre class="readonly-field-text mono json-preview" id="notes-request-preview"></pre>
