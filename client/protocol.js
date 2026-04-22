@@ -1176,6 +1176,21 @@ async function runWhoamiCall(whoamiUrl, bindingPs, hints) {
     if (res.status === 401) {
       resourceToken = parseInteractionHeader(requirement)['resource-token']
     }
+
+    // 200 with no scope requested: whoami returns the agent identity
+    // (sub + ps) directly off the agent_token without needing user
+    // claims. No PS exchange step — render the body as the final
+    // response and end the flow.
+    if (res.status === 200) {
+      resolveStep(step1, 'success', `Agent → Whoami: GET ${whoamiPathDisplay} → 200`)
+      appendStepBody(step1, formatResponse(200, respHeaders, body))
+      addLogStep('Agent identity received', 'success',
+        `<p>No scopes were requested, so whoami returned the agent's own identity straight from the agent_token — no Person Server exchange needed.</p>` +
+        tokenWrap(renderJSON(body)) +
+        anotherRequestButton()
+      )
+      return
+    }
     if (res.status === 401 && resourceToken) {
       resolveStep(step1, 'success', `Agent → Whoami: GET ${whoamiPathDisplay} → 401`)
       appendStepBody(step1, formatResponse(401, respHeaders, body))

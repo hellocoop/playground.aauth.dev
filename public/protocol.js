@@ -3996,6 +3996,16 @@ ${renderJSON(body)}`;
       if (res.status === 401) {
         resourceToken = parseInteractionHeader(requirement)["resource-token"];
       }
+      if (res.status === 200) {
+        resolveStep(step1, "success", `Agent \u2192 Whoami: GET ${whoamiPathDisplay} \u2192 200`);
+        appendStepBody(step1, formatResponse(200, respHeaders, body));
+        addLogStep(
+          "Agent identity received",
+          "success",
+          `<p>No scopes were requested, so whoami returned the agent's own identity straight from the agent_token \u2014 no Person Server exchange needed.</p>` + tokenWrap(renderJSON(body)) + anotherRequestButton()
+        );
+        return;
+      }
       if (res.status === 401 && resourceToken) {
         resolveStep(step1, "success", `Agent \u2192 Whoami: GET ${whoamiPathDisplay} \u2192 401`);
         appendStepBody(step1, formatResponse(401, respHeaders, body));
