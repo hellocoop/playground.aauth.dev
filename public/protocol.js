@@ -3101,15 +3101,51 @@
     const log = currentLog();
     if (!log) return;
     if (log.id === "bootstrap-log") {
-      const stash = document.getElementById("bootstrap-token-stash");
+      const artifacts = document.getElementById("bootstrap-artifacts");
       const tokenDetails = log.querySelector("#agent-token-details");
       const decodedDetails = log.querySelector("#decoded-payload-details");
-      if (stash && tokenDetails) stash.appendChild(tokenDetails);
-      if (stash && decodedDetails) stash.appendChild(decodedDetails);
+      if (artifacts && tokenDetails) artifacts.appendChild(tokenDetails);
+      if (artifacts && decodedDetails) artifacts.appendChild(decodedDetails);
     }
     log.innerHTML = "";
     log.classList.add("hidden");
+    if (PERSIST_LOG_IDS.includes(log.id)) clearPersistedLog(log.id);
   }
+  var PERSIST_LOG_IDS = ["bootstrap-log", "resource-log"];
+  var persistKey = (id) => `aauth-log-${id}`;
+  function persistActiveLog() {
+    const log = currentLog();
+    if (!log || !PERSIST_LOG_IDS.includes(log.id)) return;
+    try {
+      localStorage.setItem(persistKey(log.id), log.innerHTML);
+    } catch {
+    }
+  }
+  function clearPersistedLog(id) {
+    try {
+      localStorage.removeItem(persistKey(id));
+    } catch {
+    }
+  }
+  function clearAllPersistedLogs() {
+    for (const id of PERSIST_LOG_IDS) clearPersistedLog(id);
+  }
+  function restorePersistedLogs() {
+    for (const id of PERSIST_LOG_IDS) {
+      const saved = localStorage.getItem(persistKey(id));
+      if (!saved) continue;
+      const log = document.getElementById(id);
+      if (!log) continue;
+      log.innerHTML = saved;
+      log.classList.remove("hidden");
+      if (id === "bootstrap-log") {
+        document.getElementById("bootstrap-artifacts")?.classList.remove("hidden");
+      }
+    }
+  }
+  window.aauthClearPersistedLog = clearPersistedLog;
+  window.aauthClearAllPersistedLogs = clearAllPersistedLogs;
+  window.aauthRestorePersistedLogs = restorePersistedLogs;
   function showLog() {
     const log = currentLog();
     if (log) log.classList.remove("hidden");
@@ -3141,6 +3177,7 @@
     summary.textContent = title;
     section.appendChild(summary);
     log.appendChild(section);
+    persistActiveLog();
   }
   function currentSection(log) {
     const sections = log.querySelectorAll(":scope > details.log-section");
@@ -3167,6 +3204,7 @@
     requestAnimationFrame(() => {
       step.scrollIntoView({ behavior: "smooth", block: "start" });
     });
+    persistActiveLog();
     return step;
   }
   function resolveStep(step, status, label) {
@@ -3177,12 +3215,14 @@
     const textEl = step.querySelector(".step-text");
     if (statusEl) statusEl.outerHTML = statusIndicatorHtml(status);
     if (textEl) textEl.textContent = label;
+    persistActiveLog();
   }
   function appendStepBody(step, html) {
     if (!step) return;
     const body = step.querySelector(".log-step-body");
     if (!body) return;
     body.insertAdjacentHTML("beforeend", html);
+    persistActiveLog();
   }
   function anotherRequestButton() {
     return `<div class="log-actions"><button type="button" class="btn-outline js-scroll-authz">${escapeHtml(copy("ui.another_request_button"))}</button></div>`;
@@ -3774,13 +3814,14 @@ ${renderJSON(body)}`;
     }
     const controls = document.getElementById("bootstrap-controls");
     controls?.classList.add("hidden");
-    setActiveLog("bootstrap-log");
-    clearLog();
-    showLog();
     const hints = getHints();
     window.aauthBinding.clearBinding();
     localStorage.removeItem("aauth-agent-token");
     window.aauthUI?.setUnauthenticated?.();
+    document.getElementById("bootstrap-artifacts")?.classList.remove("hidden");
+    setActiveLog("bootstrap-log");
+    clearLog();
+    showLog();
     const result = await runBootstrap(psUrl, hints);
     if (!result) {
       controls?.classList.remove("hidden");
@@ -4121,9 +4162,13 @@ ${renderJSON(body)}`;
     if (_resumeInteractionPolling) return false;
     _resumeInteractionPolling = true;
     document.getElementById("bootstrap-controls")?.classList.add("hidden");
+    document.getElementById("bootstrap-artifacts")?.classList.remove("hidden");
     setActiveLog("bootstrap-log");
     showLog();
-    addLogSection(copy("sections.bootstrap_resumed"));
+    const log = currentLog();
+    if (!log.querySelector(":scope > details.log-section")) {
+      addLogSection(copy("sections.bootstrap"));
+    }
     const publicJwk = await crypto.subtle.exportKey("jwk", kp.publicKey);
     const interactionStep = addLogStep(
       copy("bootstrap_resumed.ps_consent_prompt.label"),
@@ -4158,28 +4203,6 @@ ${renderJSON(body)}`;
     }
   }
   window.aauthPlaceTokenDetails = placeTokenDetailsInBootstrapLog;
-  function rehydrateBootstrapLog() {
-    const log = document.getElementById("bootstrap-log");
-    if (!log) return;
-    if (log.querySelector(":scope > details.log-section")) return;
-    const section = document.createElement("details");
-    section.className = "log-section";
-    section.open = false;
-    const summary = document.createElement("summary");
-    summary.className = "log-section-heading";
-    summary.textContent = copy("sections.bootstrap");
-    section.appendChild(summary);
-    log.appendChild(section);
-    log.classList.remove("hidden");
-    const tokenDetails = document.getElementById("agent-token-details");
-    const decodedDetails = document.getElementById("decoded-payload-details");
-    for (const el of [tokenDetails, decodedDetails]) {
-      if (!el) continue;
-      el.removeAttribute("open");
-      section.appendChild(el);
-    }
-  }
-  window.aauthRehydrateBootstrapLog = rehydrateBootstrapLog;
   var PENDING_AUTHZ_KEY = "aauth-pending-authorize";
   function savePendingAuthorize(state) {
     try {
@@ -4217,7 +4240,10 @@ ${renderJSON(body)}`;
     document.querySelector("#resource-section .authz-actions")?.classList.add("hidden");
     setActiveLog("resource-log");
     showLog();
-    addLogSection(copy("sections.whoami_resumed"));
+    const log = currentLog();
+    if (!log.querySelector(":scope > details.log-section")) {
+      addLogSection(copy("sections.whoami"));
+    }
     const interactionStep = addLogStep(
       copy("whoami_resumed.ps_consent_prompt.label"),
       "pending",

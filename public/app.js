@@ -214,6 +214,7 @@ window.aauthWebAuthn = {
 //     lands on the Bootstrap fieldset with tokens collapsed.
 function setAuthenticated(_label) {
   document.getElementById('bootstrap-controls')?.classList.add('hidden')
+  document.getElementById('bootstrap-artifacts')?.classList.remove('hidden')
   document.getElementById('auth-section')?.classList.remove('hidden')
   document.getElementById('resource-section')?.classList.remove('hidden')
 }
@@ -224,6 +225,7 @@ function setAuthenticated(_label) {
 // on failure) so a re-bootstrap click never briefly re-exposes the CTA.
 function setUnauthenticated() {
   document.getElementById('bootstrap-section')?.classList.remove('hidden')
+  document.getElementById('bootstrap-artifacts')?.classList.add('hidden')
   document.getElementById('auth-section')?.classList.add('hidden')
   document.getElementById('resource-section')?.classList.add('hidden')
 }
@@ -235,6 +237,13 @@ function displayAgentToken(data) {
   raw.classList.add('encoded')
   raw.innerHTML = renderEncodedJWT(data.agent_token)
   document.getElementById('token-payload').innerHTML = renderJSON(payload)
+  // Token details are .hidden by default so they don't appear empty
+  // while the flow is running. Populated content means they're ready
+  // to be visible — whether sitting as direct children of
+  // #bootstrap-artifacts (reload path) or after being moved into the
+  // log's Bootstrap section (fresh-flow path).
+  document.getElementById('agent-token-details')?.classList.remove('hidden')
+  document.getElementById('decoded-payload-details')?.classList.remove('hidden')
 }
 
 // ── Binding state ──
@@ -653,6 +662,7 @@ document.getElementById('bootstrap-reset-btn')?.addEventListener('click', async 
     'aauth-pending-authorize',
   ]
   for (const k of BOOTSTRAP_KEYS) localStorage.removeItem(k)
+  window.aauthClearAllPersistedLogs?.()
 
   try { await clearKeyPair() } catch { /* IndexedDB may be unavailable */ }
 
@@ -663,25 +673,27 @@ document.getElementById('reset-btn')?.addEventListener('click', () => {
   localStorage.removeItem(SETTINGS_KEY)
   localStorage.removeItem('aauth-pending-authorize')
   localStorage.removeItem('aauth-pending-whoami')
+  window.aauthClearPersistedLog?.('resource-log')
 
   location.reload()
 })
 
 ;(async () => {
+  // Restore any in-progress log snapshots first — this lets
+  // resumePendingInteraction / resumePendingAuthorize (fired at the
+  // end of this IIFE) pick up inside the same <details class
+  // "log-section"> the flow was writing before the same-tab PS
+  // redirect, instead of starting a "(resumed)" branch.
+  window.aauthRestorePersistedLogs?.()
   loadBinding()
   const restored = await restoreAgentTokenAndKey()
   if (restored) {
     const payload = decodeJWTPayload(agentToken)
     setAuthenticated(payload.sub)
-    // Reload path: park the restored token details inside a closed
-    // "Bootstrap" log section so they're reachable via one toggle
-    // instead of flooding the viewport on page load.
-    window.aauthRehydrateBootstrapLog?.()
   } else if (bindingKey) {
     // Binding exists but agent_token expired/missing. We're still bootstrapped;
     // Continue will refresh. Show the post-bootstrap UI.
     setAuthenticated(bindingSub || bindingPs || 'agent')
-    window.aauthRehydrateBootstrapLog?.()
   } else if (localStorage.getItem('aauth-pending-bootstrap')) {
     // First-bootstrap resume case: no agent_token exists yet, but the
     // ephemeral key was saved to IndexedDB before the PS redirect. Load

@@ -131,32 +131,26 @@
       </div>
 
       <!--
-        Per-section protocol log. Bootstrap's network calls render
-        inline here so the user's focus never leaves the fieldset they
-        just acted on. Separate log instances live inside Authorization
-        Request and (when agent-token refresh fires) Agent Identity.
-        Each addLogSection() call wraps its steps in a collapsible
-        <details>, so the section heading (BOOTSTRAP / REFRESH / …) is
-        itself the disclosure target — no separate "Protocol log"
-        header row.
-      -->
-      <div class="protocol-log hidden" id="bootstrap-log"></div>
+        Bootstrap artifacts — the green-line-left column that visually
+        marks everything produced by the ceremony. Contains the log
+        (step trail) and the two token details. Agent Identity sits
+        OUTSIDE this wrapper so the green line doesn't wrap it.
 
-      <!--
-        Agent Token + Decoded Payload stash. These get moved into the
-        bootstrap-log's last <details class="log-section"> so they
-        collapse/expand together with the log (per user request: one
-        toggle reveals everything the ceremony produced). The stash
-        container is hidden; children become visible once JS reparents
-        them into the visible log section. clearLog moves them back
-        here before wiping bootstrap-log so a re-bootstrap doesn't
-        destroy them — applyBootstrapResult moves them back into the
-        fresh section. On page reload, rehydrateBootstrapLog creates
-        a closed "Bootstrap" section and parks them inside (both
-        <details> set to open=false so the reloaded page isn't noisy).
+        Two lifecycle positions for the token details:
+          Mid/post fresh-flow — placeTokenDetailsInBootstrapLog moves
+            them INSIDE the last .log-section so the section toggle
+            hides them alongside the steps.
+          Reloaded session — they stay as direct children of
+            #bootstrap-artifacts, individually collapsible, no
+            wrapping "Bootstrap" section / chevron.
+
+        clearLog's preservation logic reparents them back here before
+        wiping bootstrap-log, so a re-bootstrap can't destroy their
+        populated content.
       -->
-      <div id="bootstrap-token-stash" class="hidden">
-        <details class="section-group" id="agent-token-details">
+      <div id="bootstrap-artifacts" class="hidden">
+        <div class="protocol-log hidden" id="bootstrap-log"></div>
+        <details class="section-group hidden" id="agent-token-details">
           <summary class="section-heading">
             <span>Agent Token (aa-agent+jwt)</span>
             <svg class="section-chevron" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5"/></svg>
@@ -166,7 +160,7 @@
             <div class="token-display" id="agent-token-raw"></div>
           </div>
         </details>
-        <details class="section-group" id="decoded-payload-details">
+        <details class="section-group hidden" id="decoded-payload-details">
           <summary class="section-heading">
             <span>Decoded Payload</span>
             <svg class="section-chevron" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5"/></svg>
@@ -179,10 +173,11 @@
       </div>
 
       <!--
-        Post-bootstrap Agent Identity row pinned to the bottom of the
-        fieldset so toggling the bootstrap log above doesn't hide the
-        user-visible identity. "Bootstrap complete" renders as an inset
-        legend on the fieldset's bottom border via .section-legend-bottom.
+        Agent Identity pinned at the bottom of the fieldset, OUTSIDE the
+        green-line wrapper — the user's identity is the outcome of the
+        ceremony, not part of its trace. "Bootstrap complete" renders as
+        an inset legend on the fieldset's bottom border via
+        .section-legend-bottom.
       -->
       <div id="auth-section" class="hidden" data-test="auth-card">
         <div id="agent-id-row">
