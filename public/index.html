@@ -222,6 +222,10 @@
             <svg class="section-chevron" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5"/></svg>
           </summary>
           <div class="scope-grid" id="identity-scope-grid"></div>
+          <!-- Surfaces when all identity scopes are unchecked — the server
+               accepts a scopeless whoami and returns just the agent's own
+               identity. updateWhoamiUrlPreview toggles the .hidden class. -->
+          <p class="scope-caption hidden" id="whoami-no-scopes-caption">No scopes — returns your agent identity only.</p>
         </details>
 
         <!--

@@ -461,6 +461,11 @@ function updateWhoamiUrlPreview() {
     ? `${WHOAMI_ORIGIN}/?scope=${encodeURIComponent(scopeParam)}`
     : `${WHOAMI_ORIGIN}/`
   el.textContent = url
+  // Zero-scope path: whoami returns just the agent's identity. Surface
+  // a caption so a viewer staring at a bare URL understands the call
+  // is intentional, not broken.
+  document.getElementById('whoami-no-scopes-caption')
+    ?.classList.toggle('hidden', scopes.length > 0)
 }
 window.updateWhoamiUrlPreview = updateWhoamiUrlPreview
 
