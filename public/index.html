@@ -175,11 +175,12 @@
       <!--
         Agent Identity pinned at the bottom of the fieldset, OUTSIDE the
         green-line wrapper — the user's identity is the outcome of the
-        ceremony, not part of its trace. "Bootstrap complete" renders as
-        an inset legend on the fieldset's bottom border via
-        .section-legend-bottom.
+        ceremony, not part of its trace. "Bootstrap complete" sits above
+        the identity row (below the green-line log) as a flow element
+        now, not an inset legend — see .section-legend-status.
       -->
       <div id="auth-section" class="hidden" data-test="auth-card">
+        <div class="section-legend-status" aria-live="polite"><span class="step-status step-status-success">&#x2713;</span> Bootstrap complete</div>
         <div id="agent-id-row">
           <label>Agent Identity</label>
           <div class="readonly-field">
@@ -187,7 +188,6 @@
             <button class="copy-btn" type="button" data-copy-target="#agent-id" aria-label="Copy"></button>
           </div>
         </div>
-        <div class="section-legend-bottom" aria-live="polite"><span class="step-status step-status-success">&#x2713;</span> Bootstrap complete</div>
       </div>
     </fieldset>
   </div>

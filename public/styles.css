@@ -188,8 +188,8 @@ input[type="checkbox"]:disabled, input[type="radio"]:disabled {
   .status.unauthenticated { background: #450a0a; color: #fca5a5; }
 }
 .token-display {
-  background: var(--bg);
-  border: 1px solid var(--border);
+  background: #F2F6FB;
+  border: none;
   border-radius: 4px;
   padding: 0.6rem 0.75rem;
   font-family: 'IBM Plex Mono', 'SF Mono', 'Fira Code', monospace;
@@ -197,6 +197,9 @@ input[type="checkbox"]:disabled, input[type="radio"]:disabled {
   word-break: break-all;
   white-space: pre-wrap;
   margin-top: 0.5rem;
+}
+@media (prefers-color-scheme: dark) {
+  .token-display { background: #303030; }
 }
 .row { display: flex; gap: 0.75rem; align-items: center; margin-bottom: 0.75rem; }
 .section { margin-top: 1.5rem; }
@@ -382,14 +385,17 @@ a { color: var(--accent); }
 .inline-copy .copy-btn { margin-top: -4px; }
 .readonly-field {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 0.5rem;
   padding: 0.5rem 0.75rem;
   border: none;
-  box-shadow: 0 0 0 1px var(--border);
+  background: #F2F6FB;
   border-radius: 2px;
   margin-bottom: 1rem;
+}
+@media (prefers-color-scheme: dark) {
+  .readonly-field { background: #303030; }
 }
 .readonly-field-text {
   font-family: 'IBM Plex Mono', 'SF Mono', 'Fira Code', monospace;
@@ -500,17 +506,11 @@ details.log-section > #decoded-payload-details:last-child {
 
 a.hello-btn { text-decoration: none; }
 
-/* "Bootstrap complete" status pinned to the bottom border of the
-   Bootstrap Agent fieldset, mirroring the top-border legend ("Bootstrap
-   Agent") — same mono uppercase typography, same inset-into-border
-   positioning. Fieldsets only support one <legend>, so this is a
-   plain div absolutely positioned relative to the .section-box. */
-.section-legend-bottom {
-  position: absolute;
-  bottom: -0.55rem;
-  left: 1rem;
-  padding: 0 0.35rem;
-  background: var(--bg);
+/* "Bootstrap complete" status — sits above Agent Identity, below the
+   green-line log trace. Normal flow element (not an inset legend).
+   Same mono uppercase typography as the top-border Bootstrap Agent
+   legend so it reads as a matched pair bracketing the ceremony. */
+.section-legend-status {
   font-family: 'IBM Plex Mono', 'SF Mono', 'Fira Code', monospace;
   font-size: 0.75rem;
   text-transform: uppercase;
@@ -519,11 +519,12 @@ a.hello-btn { text-decoration: none; }
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
+  margin-bottom: 0.75rem;
 }
 /* Checkmark reads as a visual milestone — bump it up vs the 0.75rem
    label so it's legible at a glance without competing with the
    uppercase "BOOTSTRAP COMPLETE" text alongside it. */
-.section-legend-bottom .step-status {
+.section-legend-status .step-status {
   font-size: 1.05rem;
   line-height: 1;
 }
