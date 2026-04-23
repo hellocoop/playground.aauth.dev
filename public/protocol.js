@@ -3312,6 +3312,28 @@
     if (textEl) textEl.textContent = label;
     persistActiveLog();
   }
+  function demoteIfEmpty(step) {
+    if (!step || step.tagName !== "DETAILS") return step;
+    const body = step.querySelector(".log-step-body");
+    if (body && body.textContent.trim()) return step;
+    const div = document.createElement("div");
+    div.className = step.className.includes("log-step-static") ? step.className : `${step.className} log-step-static`;
+    const summary = step.querySelector("summary.section-heading");
+    if (summary) {
+      const heading = document.createElement("div");
+      heading.className = summary.className;
+      heading.innerHTML = summary.innerHTML;
+      heading.querySelector(".section-chevron")?.remove();
+      div.appendChild(heading);
+    }
+    if (body) div.appendChild(body);
+    for (const attr of step.attributes) {
+      if (attr.name.startsWith("data-")) div.setAttribute(attr.name, attr.value);
+    }
+    step.replaceWith(div);
+    persistActiveLog();
+    return div;
+  }
   function appendStepBody(step, html) {
     if (!step) return;
     const body = step.querySelector(".log-step-body");
@@ -3728,6 +3750,7 @@ ${renderJSON(body)}`;
         return false;
       }
       resolveStep(verifyStep, "success", fmt(copy("bootstrap.agent_server_verify_request.label_resolved_template"), { path: "/bootstrap/verify", status: 200 }));
+      appendStepBody(verifyStep, formatResponse(200, null, result));
     } catch (err) {
       resolveStep(verifyStep, "error", fmt(copy("bootstrap.agent_server_verify_request.label_error_network_template"), { path: "/bootstrap/verify" }));
       appendStepBody(verifyStep, `<p style="color: var(--error)">${escapeHtml(err.message)}</p>`);
@@ -4297,16 +4320,16 @@ ${renderJSON(body)}`;
     const publicJwk = await crypto.subtle.exportKey("jwk", kp.publicKey);
     let interactionStep = log.querySelector('[data-consent-key="bootstrap"]');
     const resumedLabel = copy("bootstrap_resumed.ps_consent_prompt.label_redirected");
-    const resumedBody = desc("bootstrap_resumed.ps_consent_prompt");
     if (interactionStep) {
       const body = interactionStep.querySelector(".log-step-body");
-      if (body) body.innerHTML = resumedBody;
+      if (body) body.innerHTML = "";
       resolveStep(interactionStep, "success", resumedLabel);
+      interactionStep = demoteIfEmpty(interactionStep);
     } else {
-      interactionStep = addLogStep(resumedLabel, "success", resumedBody);
+      interactionStep = addLogStep(resumedLabel, "success", "");
     }
     const existingPollStep = log.querySelector('[data-poll-key="bootstrap"]');
-    const pending2 = await pollForBootstrapToken(saved.pollUrl, kp, publicJwk, interactionStep, existingPollStep || void 0);
+    const pending2 = await pollForBootstrapToken(saved.pollUrl, kp, publicJwk, null, existingPollStep || void 0);
     if (!pending2) return true;
     addLogStep(
       copy("bootstrap.ps_bootstrap_token_received.label"),

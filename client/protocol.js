@@ -292,6 +292,43 @@ function resolveStep(step, status, label) {
   persistActiveLog()
 }
 
+// If a resolved step ended up with an empty body, drop its
+// expand/collapse chrome (chevron, clickable summary) — the dropdown
+// toggles to nothing, which reads as broken. Rebuilds the <details>
+// as a <div class="log-step-static"> preserving its status classes
+// and heading text, and returns the new node so callers can update
+// their reference.
+function demoteIfEmpty(step) {
+  if (!step || step.tagName !== 'DETAILS') return step
+  const body = step.querySelector('.log-step-body')
+  if (body && body.textContent.trim()) return step
+
+  const div = document.createElement('div')
+  div.className = step.className.includes('log-step-static')
+    ? step.className
+    : `${step.className} log-step-static`
+
+  const summary = step.querySelector('summary.section-heading')
+  if (summary) {
+    const heading = document.createElement('div')
+    heading.className = summary.className
+    heading.innerHTML = summary.innerHTML
+    heading.querySelector('.section-chevron')?.remove()
+    div.appendChild(heading)
+  }
+  if (body) div.appendChild(body)
+
+  // Preserve data-* attributes (consent-key, poll-key) used by resume
+  // code to find pre-redirect steps on return.
+  for (const attr of step.attributes) {
+    if (attr.name.startsWith('data-')) div.setAttribute(attr.name, attr.value)
+  }
+
+  step.replaceWith(div)
+  persistActiveLog()
+  return div
+}
+
 // Append additional HTML into an existing step's body — used to fold a
 // response rendering under the same step as its request, so one step = one
 // round-trip instead of a separate request and response row.
@@ -815,6 +852,7 @@ async function completeAgentServerBootstrap(bootstrapToken, publicJwk, keyPair, 
       return false
     }
     resolveStep(verifyStep, 'success', fmt(copy('bootstrap.agent_server_verify_request.label_resolved_template'), { path: '/bootstrap/verify', status: 200 }))
+    appendStepBody(verifyStep, formatResponse(200, null, result))
   } catch (err) {
     resolveStep(verifyStep, 'error', fmt(copy('bootstrap.agent_server_verify_request.label_error_network_template'), { path: '/bootstrap/verify' }))
     appendStepBody(verifyStep, `<p style="color: var(--error)">${escapeHtml(err.message)}</p>`)
@@ -1552,24 +1590,28 @@ async function resumePendingInteraction() {
   // Reuse the pre-redirect consent-prompt step if the restored log has
   // it — resolve it to success with a post-return label. The redirect
   // round-trip is done by the time we get here, so leaving the step
-  // in pending (three dots pulsing, "Redirecting…" body) misrepresents
-  // the current state. Fallback to a fresh success step if the tag
-  // isn't present (persistence disabled or log was cleared mid-flow).
-  // The pollStep reused below carries the actual in-progress status.
+  // pending (three dots, "Redirecting…" body) misrepresents state.
+  // The body is wiped and the step demoted to static (no chevron) —
+  // the label alone conveys the outcome; an expandable dropdown would
+  // reveal empty content, reading as broken.
   let interactionStep = log.querySelector('[data-consent-key="bootstrap"]')
   const resumedLabel = copy('bootstrap_resumed.ps_consent_prompt.label_redirected')
-  const resumedBody = desc('bootstrap_resumed.ps_consent_prompt')
   if (interactionStep) {
     const body = interactionStep.querySelector('.log-step-body')
-    if (body) body.innerHTML = resumedBody
+    if (body) body.innerHTML = ''
     resolveStep(interactionStep, 'success', resumedLabel)
+    interactionStep = demoteIfEmpty(interactionStep)
   } else {
-    interactionStep = addLogStep(resumedLabel, 'success', resumedBody)
+    interactionStep = addLogStep(resumedLabel, 'success', '')
   }
   // Reuse the pre-redirect pollStep so pollForBootstrapToken resolves
   // that same entry instead of leaving a stuck-pending duplicate.
+  // Pass null for the interactionStep: we've already resolved it to
+  // 'Redirected to Person Server consent'. Letting the poller
+  // overwrite it to 'User Consent Completed' on 200 would erase the
+  // resumed label users just saw flash in.
   const existingPollStep = log.querySelector('[data-poll-key="bootstrap"]')
-  const pending = await pollForBootstrapToken(saved.pollUrl, kp, publicJwk, interactionStep, existingPollStep || undefined)
+  const pending = await pollForBootstrapToken(saved.pollUrl, kp, publicJwk, null, existingPollStep || undefined)
   if (!pending) return true
   addLogStep(copy('bootstrap.ps_bootstrap_token_received.label'), 'success',
     desc('bootstrap.ps_bootstrap_token_received') +

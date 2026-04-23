@@ -231,19 +231,22 @@ function setUnauthenticated() {
 }
 
 function displayAgentToken(data) {
-  const payload = decodeJWTPayload(data.agent_token)
   document.getElementById('agent-id').textContent = data.agent_id
+  // #agent-token-details / #decoded-payload-details are no longer
+  // surfaced — the verify step in the log now shows the raw response
+  // (bootstrap) or an inline formatToken (refresh), so a separate
+  // pinned copy of the token + decoded payload would just duplicate
+  // content the user already saw scroll past. Elements stay in the
+  // DOM (still populated below) purely as a copy-target safety net
+  // in case a future view wants to re-enable them.
   const raw = document.getElementById('agent-token-raw')
-  raw.classList.add('encoded')
-  raw.innerHTML = renderEncodedJWT(data.agent_token)
-  document.getElementById('token-payload').innerHTML = renderJSON(payload)
-  // Token details are .hidden by default so they don't appear empty
-  // while the flow is running. Populated content means they're ready
-  // to be visible — whether sitting as direct children of
-  // #bootstrap-artifacts (reload path) or after being moved into the
-  // log's Bootstrap section (fresh-flow path).
-  document.getElementById('agent-token-details')?.classList.remove('hidden')
-  document.getElementById('decoded-payload-details')?.classList.remove('hidden')
+  if (raw) {
+    raw.classList.add('encoded')
+    raw.innerHTML = renderEncodedJWT(data.agent_token)
+  }
+  const payload = decodeJWTPayload(data.agent_token)
+  const payloadEl = document.getElementById('token-payload')
+  if (payloadEl) payloadEl.innerHTML = renderJSON(payload)
 }
 
 // ── Binding state ──
@@ -346,7 +349,6 @@ function applyBootstrapResult(result) {
   saveAgentToken(result.agent_token)
   displayAgentToken({ agent_token: result.agent_token, agent_id: result.agent_id })
   setAuthenticated(result.agent_id)
-  window.aauthPlaceTokenDetails?.({ open: true })
   requestAnimationFrame(() => {
     document.getElementById('resource-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   })
