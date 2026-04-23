@@ -167,15 +167,13 @@ function restorePersistedLogs() {
     if (!log) continue
     log.innerHTML = saved
     log.classList.remove('hidden')
-    // Pre-redirect interaction boxes (Continue with Hellō + QR, or
-    // the centered 'Redirecting…' card) carry a yellow animated
-    // flare. On reload those rows are already stale — the user has
-    // either returned from the PS or the flow has otherwise moved
-    // on — so the spinning gradient shouldn't paint again while the
-    // resume handler catches up. Strip any box found in the restored
-    // HTML; resumePending… rewrites the step body anyway.
-    for (const box of log.querySelectorAll('.interaction-box')) {
-      box.remove()
+    // Drop any stale Continue-button loader state that was sitting on a
+    // persisted .hello-btn — once resumePending resolves the parent
+    // step to success, CSS (.log-step.success .interaction-box …)
+    // overlays the 'approved' check and stops the flare, so the full
+    // interaction record stays visible as a log of what happened.
+    for (const btn of log.querySelectorAll('.hello-btn-loader')) {
+      btn.classList.remove('hello-btn-loader')
     }
     // Collapse each top-level section on reload so the restored trail
     // doesn't flood the viewport. User can expand on demand. Mid-flow
@@ -1616,19 +1614,16 @@ async function resumePendingInteraction() {
   }
   const publicJwk = await crypto.subtle.exportKey('jwk', kp.publicKey)
   // Reuse the pre-redirect consent-prompt step if the restored log has
-  // it — resolve it to success with a post-return label. The redirect
-  // round-trip is done by the time we get here, so leaving the step
-  // pending (three dots, "Redirecting…" body) misrepresents state.
-  // The body is wiped and the step demoted to static (no chevron) —
-  // the label alone conveys the outcome; an expandable dropdown would
-  // reveal empty content, reading as broken.
+  // it — resolve it to success with a post-return label. Leave the
+  // body (the "Redirecting to Person Server for consent…" interaction
+  // box) intact: CSS .log-step.success .interaction-box stops the
+  // yellow flare, outlines the box green, and overlays an approved
+  // check. Keeping it in place reads as a record of what happened
+  // rather than a section that blew itself out on completion.
   let interactionStep = log.querySelector('[data-consent-key="bootstrap"]')
   const resumedLabel = copy('bootstrap_resumed.ps_consent_prompt.label_redirected')
   if (interactionStep) {
-    const body = interactionStep.querySelector('.log-step-body')
-    if (body) body.innerHTML = ''
     resolveStep(interactionStep, 'success', resumedLabel)
-    interactionStep = demoteIfEmpty(interactionStep)
   } else {
     interactionStep = addLogStep(resumedLabel, 'success', '')
   }
@@ -1766,26 +1761,17 @@ async function resumePendingAuthorize() {
   if (!log.querySelector(':scope > details.log-section')) {
     addLogSection(copy(isNotes ? 'sections.notes' : 'sections.whoami'))
   }
-  // Reuse the pre-redirect "Continue with Hellō / QR" step if the
-  // restored log has it: swap its interaction-box body out for the
-  // Polling message so the single step carries through approval.
-  // Without this, the stale Continue+QR card sits next to the new
-  // poll step, and the broken QR (canvas lost across same-origin
-  // navigation) reads as an error.
+  // Reuse the pre-redirect "Continue with Hellō / QR" step. Leave its
+  // interaction-box body intact so the reader can still see the
+  // interface they were handed; on poll 200 the CSS
+  // .log-step.success .interaction-box overlays a check mark and
+  // stops the flare, turning it into a completed record without
+  // blowing out the section. Fallback creates a fresh step if the
+  // persisted log was cleared mid-flow.
   const consentKey = isNotes ? 'notes' : 'whoami'
   let interactionStep = log.querySelector(`[data-consent-key="${consentKey}"]`)
-  if (interactionStep) {
-    const body = interactionStep.querySelector('.log-step-body')
-    if (body) {
-      body.innerHTML = desc(promptKey) +
-        `<div class="token-display">Polling ${escapeHtml(saved.pollUrl)}</div>`
-    }
-    persistActiveLog()
-  } else {
-    interactionStep = addLogStep(copy(`${promptKey}.label`), 'pending',
-      desc(promptKey) +
-      `<div class="token-display">Polling ${escapeHtml(saved.pollUrl)}</div>`
-    )
+  if (!interactionStep) {
+    interactionStep = addLogStep(copy(`${promptKey}.label`), 'pending', desc(promptKey))
   }
 
   // On auth_token arrival, route to the flow-specific handler:
@@ -1927,18 +1913,11 @@ async function _startAuthTokenPollingImpl(pollUrl, baseUrl, interactionStep, pol
       if (res.status === 200) {
         clearPendingAuthorize()
         resolveStep(pollStep, 'success', fmt(copy('authorize.ps_pending_longpoll.label_resolved_template'), { path: pollPath, status: 200 }))
-        // Interaction step renders label-only on success — the poll
-        // step directly above already shows the request/response, so
-        // keeping a collapsible body with a stale "Polling…" line
-        // just repeats a URL the reader can see. Empty body + demote
-        // strips the chevron so the dropdown doesn't tease content
-        // that isn't there.
-        if (interactionStep) {
-          const ibody = interactionStep.querySelector('.log-step-body')
-          if (ibody) ibody.innerHTML = ''
-          resolveStep(interactionStep, 'success', 'Interaction Completed')
-          demoteIfEmpty(interactionStep)
-        }
+        // Resolve only — the interaction-box body stays in place as
+        // a record of the consent interface the user was handed. CSS
+        // (.log-step.success .interaction-box) stops the flare and
+        // overlays an approved check mark across the box.
+        resolveStep(interactionStep, 'success', 'Interaction Completed')
         // If a caller supplied onAuthToken (e.g. whoami needs to retry the
         // resource call with the freshly-minted token), hand off to them.
         // Otherwise render the generic "Authorization Granted" step.

@@ -3230,8 +3230,8 @@
       if (!log) continue;
       log.innerHTML = saved;
       log.classList.remove("hidden");
-      for (const box of log.querySelectorAll(".interaction-box")) {
-        box.remove();
+      for (const btn of log.querySelectorAll(".hello-btn-loader")) {
+        btn.classList.remove("hello-btn-loader");
       }
       for (const section of log.querySelectorAll(":scope > details.log-section")) {
         section.removeAttribute("open");
@@ -3315,27 +3315,6 @@
     if (statusEl) statusEl.outerHTML = statusIndicatorHtml(status);
     if (textEl) textEl.textContent = label;
     persistActiveLog();
-  }
-  function demoteIfEmpty(step) {
-    if (!step || step.tagName !== "DETAILS") return step;
-    const body = step.querySelector(".log-step-body");
-    if (body && body.textContent.trim()) return step;
-    const div = document.createElement("div");
-    div.className = step.className.includes("log-step-static") ? step.className : `${step.className} log-step-static`;
-    const summary = step.querySelector("summary.section-heading");
-    if (summary) {
-      const heading = document.createElement("div");
-      heading.className = summary.className;
-      heading.innerHTML = summary.innerHTML;
-      heading.querySelector(".section-chevron")?.remove();
-      div.appendChild(heading);
-    }
-    for (const attr of step.attributes) {
-      if (attr.name.startsWith("data-")) div.setAttribute(attr.name, attr.value);
-    }
-    step.replaceWith(div);
-    persistActiveLog();
-    return div;
   }
   function appendStepBody(step, html) {
     if (!step) return;
@@ -4319,10 +4298,7 @@ ${renderJSON(body)}`;
     let interactionStep = log.querySelector('[data-consent-key="bootstrap"]');
     const resumedLabel = copy("bootstrap_resumed.ps_consent_prompt.label_redirected");
     if (interactionStep) {
-      const body = interactionStep.querySelector(".log-step-body");
-      if (body) body.innerHTML = "";
       resolveStep(interactionStep, "success", resumedLabel);
-      interactionStep = demoteIfEmpty(interactionStep);
     } else {
       interactionStep = addLogStep(resumedLabel, "success", "");
     }
@@ -4397,18 +4373,8 @@ ${renderJSON(body)}`;
     }
     const consentKey = isNotes ? "notes" : "whoami";
     let interactionStep = log.querySelector(`[data-consent-key="${consentKey}"]`);
-    if (interactionStep) {
-      const body = interactionStep.querySelector(".log-step-body");
-      if (body) {
-        body.innerHTML = desc(promptKey) + `<div class="token-display">Polling ${escapeHtml(saved.pollUrl)}</div>`;
-      }
-      persistActiveLog();
-    } else {
-      interactionStep = addLogStep(
-        copy(`${promptKey}.label`),
-        "pending",
-        desc(promptKey) + `<div class="token-display">Polling ${escapeHtml(saved.pollUrl)}</div>`
-      );
+    if (!interactionStep) {
+      interactionStep = addLogStep(copy(`${promptKey}.label`), "pending", desc(promptKey));
     }
     let options = {};
     if (isNotes) {
@@ -4509,12 +4475,7 @@ ${renderJSON(body)}`;
         if (res.status === 200) {
           clearPendingAuthorize();
           resolveStep(pollStep, "success", fmt(copy("authorize.ps_pending_longpoll.label_resolved_template"), { path: pollPath, status: 200 }));
-          if (interactionStep) {
-            const ibody = interactionStep.querySelector(".log-step-body");
-            if (ibody) ibody.innerHTML = "";
-            resolveStep(interactionStep, "success", "Interaction Completed");
-            demoteIfEmpty(interactionStep);
-          }
+          resolveStep(interactionStep, "success", "Interaction Completed");
           if (options.onAuthToken && body?.auth_token) {
             await options.onAuthToken(body.auth_token);
           } else {
