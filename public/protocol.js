@@ -2846,21 +2846,21 @@
       },
       ps_discovery_request: {
         label_template: "Agent \u2192 Person Server: GET {path}",
-        label_resolved_template: "Agent \u2192 Person Server: GET {path} \u2192 {status}",
+        label_resolved_template: "Agent \u2192 Person Server: GET {path}",
         label_error_network_template: "Agent \u2192 Person Server: GET {path} (network error)",
         description: "Before the agent can talk to your Person Server, it asks which URLs to use for bootstrap and for sending you to consent."
       },
       ps_bootstrap_request: {
         label_template: "Agent \u2192 Person Server: POST {path}",
-        label_resolved_template: "Agent \u2192 Person Server: POST {path} \u2192 {status}",
+        label_resolved_template: "Agent \u2192 Person Server: POST {path}",
         label_error_network_template: "Agent \u2192 Person Server: POST {path} (network error)",
-        label_error_unexpected_template: "Agent \u2192 Person Server: POST {path} \u2192 {status} (unexpected)",
+        label_error_unexpected_template: "Agent \u2192 Person Server: POST {path} (unexpected)",
         description: "The agent tells your Person Server a new agent wants to connect. The Person Server replies with a URL to show you for approval, plus one the agent can check for your decision."
       },
       ps_pending_longpoll: {
         label_template: "Agent \u2192 Person Server: GET {path} (long-poll)",
-        label_resolved_template: "Agent \u2192 Person Server: GET {path} \u2192 {status}",
-        label_resolved_no_token_template: "Agent \u2192 Person Server: GET {path} \u2192 200 (no bootstrap_token)",
+        label_resolved_template: "Agent \u2192 Person Server: GET {path}",
+        label_resolved_no_token_template: "Agent \u2192 Person Server: GET {path} (no bootstrap_token)",
         description: "The agent keeps one request open while you decide, instead of polling every second. The Person Server answers the moment you approve or deny."
       },
       ps_consent_prompt: {
@@ -2889,7 +2889,7 @@
       },
       agent_server_challenge_request: {
         label_template: "Agent \u2192 Agent Server: POST {path}",
-        label_resolved_template: "Agent \u2192 Agent Server: POST {path} \u2192 {status}",
+        label_resolved_template: "Agent \u2192 Agent Server: POST {path}",
         label_error_network_template: "Agent \u2192 Agent Server: POST {path} (network error)",
         description: "The agent shows the Person Server's ticket to its Agent Server, which asks for a WebAuthn ceremony to confirm a real human is here."
       },
@@ -2903,13 +2903,13 @@
       },
       agent_server_verify_request: {
         label_template: "Agent \u2192 Agent Server: POST {path}",
-        label_resolved_template: "Agent \u2192 Agent Server: POST {path} \u2192 {status}",
+        label_resolved_template: "Agent \u2192 Agent Server: POST {path}",
         label_error_network_template: "Agent \u2192 Agent Server: POST {path} (network error)",
         description: "The Agent Server verifies your WebAuthn response and remembers the pairing of you, this Person Server, and this device \u2014 so future refreshes skip the Person Server."
       },
       ps_announce_request: {
         label_template: "Agent \u2192 Person Server: POST {path} (announce)",
-        label_resolved_template: "Agent \u2192 Person Server: POST {path} (announce) \u2192 {status}",
+        label_resolved_template: "Agent \u2192 Person Server: POST {path} (announce)",
         label_error_network_template: "Agent \u2192 Person Server: POST {path} (announce, network error)",
         description: "The agent posts an empty, agent_token-signed request back to the Person Server so the PS can bind the new aauth:local@domain agent identifier to your user record."
       }
@@ -2917,6 +2917,7 @@
     bootstrap_resumed: {
       ps_consent_prompt: {
         label: "User at Person Server: consent prompt (resumed)",
+        label_redirected: "Redirected to Person Server consent",
         description: "You returned mid-approval (page reload or redirect back from the Person Server). The agent picks up the same pending request instead of starting over."
       }
     },
@@ -2931,7 +2932,7 @@
       },
       agent_server_refresh_challenge_request: {
         label_template: "Agent \u2192 Agent Server: POST {path}",
-        label_resolved_template: "Agent \u2192 Agent Server: POST {path} \u2192 {status}",
+        label_resolved_template: "Agent \u2192 Agent Server: POST {path}",
         label_error_network_template: "Agent \u2192 Agent Server: POST {path} (network error)",
         description: "The agent asks its Agent Server for a WebAuthn challenge, signed with the old key so the server knows it's the same agent as before."
       },
@@ -2945,7 +2946,7 @@
       },
       agent_server_refresh_verify_request: {
         label_template: "Agent \u2192 Agent Server: POST {path}",
-        label_resolved_template: "Agent \u2192 Agent Server: POST {path} \u2192 {status}",
+        label_resolved_template: "Agent \u2192 Agent Server: POST {path}",
         label_error_network_template: "Agent \u2192 Agent Server: POST {path} (network error)",
         description: "The Agent Server verifies your response, swaps in the new key, and issues a fresh agent token \u2014 no trip back to your Person Server needed."
       }
@@ -2957,19 +2958,19 @@
       },
       agent_server_authorize_request: {
         label_template: "Agent \u2192 Agent Server: POST {path}",
-        label_resolved_template: "Agent \u2192 Agent Server: POST {path} \u2192 {status}",
+        label_resolved_template: "Agent \u2192 Agent Server: POST {path}",
         label_error_network_template: "Agent \u2192 Agent Server: POST {path} (network error)",
         description: "The agent asks its Agent Server for a resource token scoped to this Person Server and resource. The Agent Server signs it on the agent's behalf."
       },
       ps_token_request: {
         label_template: "Agent \u2192 Person Server: POST {path}",
-        label_resolved_template: "Agent \u2192 Person Server: POST {path} \u2192 {status}",
+        label_resolved_template: "Agent \u2192 Person Server: POST {path}",
         label_error_network_template: "Agent \u2192 Person Server: POST {path} (network error)",
         description: "The agent trades that resource token with your Person Server for an auth token. A 200 means you've already consented to this scope; 202 means the Person Server needs your approval for a new one."
       },
       ps_pending_longpoll: {
         label_template: "Agent \u2192 Person Server: GET {path} (long-poll)",
-        label_resolved_template: "Agent \u2192 Person Server: GET {path} \u2192 {status}",
+        label_resolved_template: "Agent \u2192 Person Server: GET {path}",
         description: "If new consent is needed, the agent keeps one request open while you decide, instead of polling. The Person Server responds the moment you approve or deny."
       },
       ps_consent_prompt: {
@@ -3001,31 +3002,31 @@
     notes: {
       resource_metadata_request: {
         label_template: "Agent \u2192 Notes Resource: GET {path}",
-        label_resolved_template: "Agent \u2192 Notes Resource: GET {path} \u2192 {status}",
+        label_resolved_template: "Agent \u2192 Notes Resource: GET {path}",
         label_error_network_template: "Agent \u2192 Notes Resource: GET {path} (network error)",
         description: "The agent fetches the resource's well-known metadata to discover the authorization endpoint plus the OpenAPI document describing the operations it can request."
       },
       openapi_request: {
         label_template: "Agent \u2192 Notes Resource: GET {path}",
-        label_resolved_template: "Agent \u2192 Notes Resource: GET {path} \u2192 {status}",
+        label_resolved_template: "Agent \u2192 Notes Resource: GET {path}",
         label_error_network_template: "Agent \u2192 Notes Resource: GET {path} (network error)",
         description: "The agent pulls the OpenAPI spec so it can render a checkbox per operationId \u2014 the protocol lets the agent ask for exactly the operations it needs."
       },
       authorize_request: {
         label_template: "Agent \u2192 Notes Resource: POST {path}",
-        label_resolved_template: "Agent \u2192 Notes Resource: POST {path} \u2192 {status}",
+        label_resolved_template: "Agent \u2192 Notes Resource: POST {path}",
         label_error_network_template: "Agent \u2192 Notes Resource: POST {path} (network error)",
         description: "The agent POSTs the operations it wants to the resource's authorize endpoint, signed with its agent_token. The resource responds with a resource_token naming an R3 document the Person Server will fetch during token exchange."
       },
       ps_token_request: {
         label_template: "Agent \u2192 Person Server: POST {path}",
-        label_resolved_template: "Agent \u2192 Person Server: POST {path} \u2192 {status}",
+        label_resolved_template: "Agent \u2192 Person Server: POST {path}",
         label_error_network_template: "Agent \u2192 Person Server: POST {path} (network error)",
         description: "The agent trades the resource_token at the Person Server's token endpoint. A 200 means consent was already on file; a 202 triggers a consent prompt. The Person Server fetches the R3 document, then emits an auth_token carrying r3_granted \u2014 the operations it's releasing."
       },
       ps_pending_longpoll: {
         label_template: "Agent \u2192 Person Server: GET {path} (long-poll)",
-        label_resolved_template: "Agent \u2192 Person Server: GET {path} \u2192 {status}",
+        label_resolved_template: "Agent \u2192 Person Server: GET {path}",
         description: "If new consent is needed, the agent keeps a request open while you decide. The Person Server replies the moment you approve or deny."
       },
       ps_consent_prompt: {
@@ -3057,31 +3058,31 @@
     notes_app: {
       list_request: {
         label_template: "Agent \u2192 Notes API: GET {path}",
-        label_resolved_template: "Agent \u2192 Notes API: GET {path} \u2192 {status}",
+        label_resolved_template: "Agent \u2192 Notes API: GET {path}",
         label_error_network_template: "Agent \u2192 Notes API: GET {path} (network error)",
         description: "The agent lists the user's notes, signing the request with the auth_token."
       },
       create_request: {
         label_template: "Agent \u2192 Notes API: POST {path}",
-        label_resolved_template: "Agent \u2192 Notes API: POST {path} \u2192 {status}",
+        label_resolved_template: "Agent \u2192 Notes API: POST {path}",
         label_error_network_template: "Agent \u2192 Notes API: POST {path} (network error)",
         description: "The agent creates a new note."
       },
       get_request: {
         label_template: "Agent \u2192 Notes API: GET {path}",
-        label_resolved_template: "Agent \u2192 Notes API: GET {path} \u2192 {status}",
+        label_resolved_template: "Agent \u2192 Notes API: GET {path}",
         label_error_network_template: "Agent \u2192 Notes API: GET {path} (network error)",
         description: "The agent reads a single note by id."
       },
       update_request: {
         label_template: "Agent \u2192 Notes API: PUT {path}",
-        label_resolved_template: "Agent \u2192 Notes API: PUT {path} \u2192 {status}",
+        label_resolved_template: "Agent \u2192 Notes API: PUT {path}",
         label_error_network_template: "Agent \u2192 Notes API: PUT {path} (network error)",
         description: "The agent updates an existing note. Saving resets the note's 24-hour expiry."
       },
       delete_request: {
         label_template: "Agent \u2192 Notes API: DELETE {path}",
-        label_resolved_template: "Agent \u2192 Notes API: DELETE {path} \u2192 {status}",
+        label_resolved_template: "Agent \u2192 Notes API: DELETE {path}",
         label_error_network_template: "Agent \u2192 Notes API: DELETE {path} (network error)",
         description: "The agent deletes a note."
       }
@@ -3093,7 +3094,7 @@
       },
       request: {
         label_template: "GET {path}",
-        label_resolved_template: "GET {path} \u2192 {status}",
+        label_resolved_template: "GET {path}",
         label_error_network_template: "GET {path} (network error)",
         description: "The agent calls the resource's demo endpoint, signing the HTTP request with its private key and attaching the auth token. The server checks the signature matches the token, then checks the token's scope covers this endpoint."
       },
@@ -3587,6 +3588,7 @@ ${renderJSON(body)}`;
           }
           trace("poll token extracted, length", token.length);
           resolveStep(pollStep, "success", fmt(copy("bootstrap.ps_pending_longpoll.label_resolved_template"), { path: pollPath, status: 200 }));
+          appendStepBody(pollStep, formatResponse(200, null, body));
           resolveStep(interactionStep, "success", "User Consent Completed");
           return { bootstrap_token: token, raw: body };
         }
@@ -4294,18 +4296,14 @@ ${renderJSON(body)}`;
     }
     const publicJwk = await crypto.subtle.exportKey("jwk", kp.publicKey);
     let interactionStep = log.querySelector('[data-consent-key="bootstrap"]');
+    const resumedLabel = copy("bootstrap_resumed.ps_consent_prompt.label_redirected");
+    const resumedBody = desc("bootstrap_resumed.ps_consent_prompt");
     if (interactionStep) {
       const body = interactionStep.querySelector(".log-step-body");
-      if (body) {
-        body.innerHTML = desc("bootstrap_resumed.ps_consent_prompt") + `<div class="token-display">Polling ${escapeHtml(saved.pollUrl)}</div>`;
-      }
-      persistActiveLog();
+      if (body) body.innerHTML = resumedBody;
+      resolveStep(interactionStep, "success", resumedLabel);
     } else {
-      interactionStep = addLogStep(
-        copy("bootstrap_resumed.ps_consent_prompt.label"),
-        "pending",
-        desc("bootstrap_resumed.ps_consent_prompt") + `<div class="token-display">Polling ${escapeHtml(saved.pollUrl)}</div>`
-      );
+      interactionStep = addLogStep(resumedLabel, "success", resumedBody);
     }
     const existingPollStep = log.querySelector('[data-poll-key="bootstrap"]');
     const pending2 = await pollForBootstrapToken(saved.pollUrl, kp, publicJwk, interactionStep, existingPollStep || void 0);

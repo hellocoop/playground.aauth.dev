@@ -465,7 +465,10 @@ details.log-section > #decoded-payload-details:last-child {
   align-items: center;
   gap: 0.4rem;
 }
-.step-status { font-weight: 700; }
+/* Sans-serif explicitly — otherwise the checkmark inside
+   .section-legend-status inherits the mono face from its parent and
+   renders visibly different from every other step-status in the log. */
+.step-status { font-weight: 700; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; }
 .step-status-success { color: var(--success); }
 .step-status-error { color: var(--error); }
 .step-status-pending { color: #eab308; display: inline-flex; align-items: center; gap: 3px; }

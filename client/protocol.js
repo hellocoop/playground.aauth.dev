@@ -661,6 +661,7 @@ async function _pollForBootstrapTokenImpl(absolutePollUrl, keyPair, publicJwk, i
         }
         trace('poll token extracted, length', token.length)
         resolveStep(pollStep, 'success', fmt(copy('bootstrap.ps_pending_longpoll.label_resolved_template'), { path: pollPath, status: 200 }))
+        appendStepBody(pollStep, formatResponse(200, null, body))
         resolveStep(interactionStep, 'success', 'User Consent Completed')
         // Bootstrap carries no scope, so the PS cannot bundle an auth_token
         // here — only a bootstrap_token. scope/claims are negotiated later
@@ -1549,25 +1550,21 @@ async function resumePendingInteraction() {
   }
   const publicJwk = await crypto.subtle.exportKey('jwk', kp.publicKey)
   // Reuse the pre-redirect consent-prompt step if the restored log has
-  // it — swap its "Redirecting to Person Server…" card body out for
-  // the "Polling" body and use its DOM node as the interactionStep
-  // reference. Creating a second step would leave the stale
-  // "Redirecting…" card floating above the poll, confusing the reader
-  // on return from the PS. Fallback to a fresh step if the tag isn't
-  // present (persistence disabled or log was cleared mid-flow).
+  // it — resolve it to success with a post-return label. The redirect
+  // round-trip is done by the time we get here, so leaving the step
+  // in pending (three dots pulsing, "Redirecting…" body) misrepresents
+  // the current state. Fallback to a fresh success step if the tag
+  // isn't present (persistence disabled or log was cleared mid-flow).
+  // The pollStep reused below carries the actual in-progress status.
   let interactionStep = log.querySelector('[data-consent-key="bootstrap"]')
+  const resumedLabel = copy('bootstrap_resumed.ps_consent_prompt.label_redirected')
+  const resumedBody = desc('bootstrap_resumed.ps_consent_prompt')
   if (interactionStep) {
     const body = interactionStep.querySelector('.log-step-body')
-    if (body) {
-      body.innerHTML = desc('bootstrap_resumed.ps_consent_prompt') +
-        `<div class="token-display">Polling ${escapeHtml(saved.pollUrl)}</div>`
-    }
-    persistActiveLog()
+    if (body) body.innerHTML = resumedBody
+    resolveStep(interactionStep, 'success', resumedLabel)
   } else {
-    interactionStep = addLogStep(copy('bootstrap_resumed.ps_consent_prompt.label'), 'pending',
-      desc('bootstrap_resumed.ps_consent_prompt') +
-      `<div class="token-display">Polling ${escapeHtml(saved.pollUrl)}</div>`
-    )
+    interactionStep = addLogStep(resumedLabel, 'success', resumedBody)
   }
   // Reuse the pre-redirect pollStep so pollForBootstrapToken resolves
   // that same entry instead of leaving a stuck-pending duplicate.
