@@ -696,9 +696,6 @@ details.log-section + details.log-section {
 }
 .tab.tab-active {
   color: var(--text);
-  border-bottom-color: var(--text);
-}
-.tab.tab-active[data-tab="whoami"] {
   border-bottom-color: var(--success);
 }
 
