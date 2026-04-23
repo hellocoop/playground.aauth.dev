@@ -2702,7 +2702,13 @@ async function callNotesAPI(method, path, body) {
 // tokens leave the fieldset hidden.
 async function restoreNotesApp() {
   if (!getStoredNotesAuthToken()) return
-  revealNotesApp()
+  // Only unhide the fieldset if the notes tab is currently selected —
+  // the default HTML state has whoami active, so unconditionally
+  // revealing after a reload would orphan the notes box under the
+  // wrong tab. The tab click handler (activateResourceTab in app.js)
+  // handles the visibility swap when the user switches to notes.
+  const notesTabActive = document.querySelector('#resource-section .tab[data-tab="notes"].tab-active')
+  if (notesTabActive) revealNotesApp()
   renderNotesApp()
   if (getGrantedOps().has('listNotes')) await refreshNotesList()
 }

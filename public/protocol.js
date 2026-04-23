@@ -5159,7 +5159,8 @@ ${renderJSON(body)}`;
   }
   async function restoreNotesApp() {
     if (!getStoredNotesAuthToken()) return;
-    revealNotesApp();
+    const notesTabActive = document.querySelector('#resource-section .tab[data-tab="notes"].tab-active');
+    if (notesTabActive) revealNotesApp();
     renderNotesApp();
     if (getGrantedOps().has("listNotes")) await refreshNotesList();
   }

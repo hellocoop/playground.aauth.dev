@@ -665,6 +665,20 @@ function renderCopyIcons(root = document) {
 renderCopyIcons()
 new MutationObserver(() => renderCopyIcons()).observe(document.body, { childList: true, subtree: true })
 
+// bfcache (back-forward cache) restore: when the user clicks the
+// browser back button from the Person Server, the page is rehydrated
+// from its frozen pre-navigation DOM — no reload, no module re-run.
+// The Hellō Continue button they clicked on the way out still carries
+// the .hello-btn-loader spinner state we added on click, which now
+// reads as a stuck loader. Strip it so the button is clickable again
+// (or until the resume handlers replace its containing .interaction-box).
+window.addEventListener('pageshow', (e) => {
+  if (!e.persisted) return
+  for (const btn of document.querySelectorAll('.hello-btn-loader')) {
+    btn.classList.remove('hello-btn-loader')
+  }
+})
+
 // Resource Request tab switcher — toggles .tab-active on the buttons
 // and the `hidden` attribute on each .tab-panel. On each activation we
 // fire window.aauthOnTabActivated(name) so protocol.js can trigger
@@ -689,8 +703,17 @@ function activateResourceTab(name) {
   for (const panel of section.querySelectorAll('.tab-panel')) {
     panel.hidden = panel.dataset.panel !== name
   }
-  if (name === 'notes' && localStorage.getItem('aauth-notes-auth-token')) {
-    document.getElementById('notes-section')?.classList.remove('hidden')
+  // Couple Notes fieldset visibility to the notes tab in both
+  // directions — showing it while the whoami tab is active left the
+  // notes box orphaned under an unrelated form; hiding it on whoami
+  // keeps each tab paired with its matching downstream content.
+  const notesSection = document.getElementById('notes-section')
+  if (notesSection) {
+    if (name === 'notes' && localStorage.getItem('aauth-notes-auth-token')) {
+      notesSection.classList.remove('hidden')
+    } else if (name !== 'notes') {
+      notesSection.classList.add('hidden')
+    }
   }
   try { window.aauthOnTabActivated?.(name) } catch { /* handler is advisory */ }
 }
@@ -780,21 +803,15 @@ document.getElementById('reset-btn')?.addEventListener('click', () => {
   localStorage.removeItem('aauth-pending-authorize')
   localStorage.removeItem('aauth-pending-whoami')
   localStorage.removeItem('aauth-notes-auth-token')
-  // Resource Request fieldset-level reset wipes both tabs' logs.
+  // Resource Request fieldset-level reset wipes every downstream log —
+  // both ceremony logs (whoami + notes) and the per-operation Notes
+  // API log that lives inside the Notes fieldset. The Notes fieldset
+  // used to have its own Reset button scoped to just its state, but
+  // it read as redundant next to this one.
   window.aauthClearPersistedLog?.('whoami-log')
   window.aauthClearPersistedLog?.('notes-log')
-
-  location.reload()
-})
-
-// Notes fieldset Reset — scoped to just the notes auth_token and the
-// notes log. Leaves bootstrap binding, whoami log, and other resource
-// state alone, so the user can re-run the R3 flow with a different
-// set of operations.
-document.getElementById('notes-reset-btn')?.addEventListener('click', () => {
-  localStorage.removeItem('aauth-notes-auth-token')
-  window.aauthClearPersistedLog?.('notes-log')
   window.aauthClearPersistedLog?.('notes-api-log')
+
   location.reload()
 })
 
