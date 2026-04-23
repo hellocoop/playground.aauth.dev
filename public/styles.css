@@ -698,6 +698,9 @@ details.log-section + details.log-section {
   color: var(--text);
   border-bottom-color: var(--text);
 }
+.tab.tab-active[data-tab="whoami"] {
+  border-bottom-color: var(--success);
+}
 
 /* Leading paragraph inside a tab panel — explains what this demo does
    before the scope picker. Subdued so it reads as caption, not body. */
