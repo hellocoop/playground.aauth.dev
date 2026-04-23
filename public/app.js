@@ -670,21 +670,36 @@ new MutationObserver(() => renderCopyIcons()).observe(document.body, { childList
 // fire window.aauthOnTabActivated(name) so protocol.js can trigger
 // tab-specific lazy setup (e.g. fetching notes metadata + openapi
 // the first time the notes tab is opened).
-document.querySelector('#resource-section .tab-row')?.addEventListener('click', (e) => {
-  const tab = e.target.closest('.tab')
-  if (!tab) return
-  const name = tab.dataset.tab
-  const row = tab.parentElement
-  const section = row.closest('#resource-section')
+//
+// Visibility of the Notes fieldset (#notes-section) is coupled to the
+// notes tab being active, but only when the user actually has a
+// notes auth_token — an empty notes box under an unauthorized tab
+// reads as a broken intermediate state.
+function activateResourceTab(name) {
+  const section = document.getElementById('resource-section')
+  const row = section?.querySelector('.tab-row')
+  if (!section || !row) return
+  const target = row.querySelector(`.tab[data-tab="${name}"]`)
+  if (!target) return
   for (const t of row.querySelectorAll('.tab')) {
-    const active = t === tab
+    const active = t === target
     t.classList.toggle('tab-active', active)
     t.setAttribute('aria-selected', active ? 'true' : 'false')
   }
   for (const panel of section.querySelectorAll('.tab-panel')) {
     panel.hidden = panel.dataset.panel !== name
   }
+  if (name === 'notes' && localStorage.getItem('aauth-notes-auth-token')) {
+    document.getElementById('notes-section')?.classList.remove('hidden')
+  }
   try { window.aauthOnTabActivated?.(name) } catch { /* handler is advisory */ }
+}
+window.aauthActivateTab = activateResourceTab
+
+document.querySelector('#resource-section .tab-row')?.addEventListener('click', (e) => {
+  const tab = e.target.closest('.tab')
+  if (!tab) return
+  activateResourceTab(tab.dataset.tab)
 })
 
 // Copy buttons — delegated. `data-copy` copies a literal string; `data-copy-target`
@@ -779,6 +794,7 @@ document.getElementById('reset-btn')?.addEventListener('click', () => {
 document.getElementById('notes-reset-btn')?.addEventListener('click', () => {
   localStorage.removeItem('aauth-notes-auth-token')
   window.aauthClearPersistedLog?.('notes-log')
+  window.aauthClearPersistedLog?.('notes-api-log')
   location.reload()
 })
 

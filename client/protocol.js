@@ -142,7 +142,7 @@ function clearLog() {
 // reload shows the default Agent Identity-only state rather than a
 // stale "last ceremony was X" snapshot.
 
-const PERSIST_LOG_IDS = ['bootstrap-log', 'whoami-log', 'notes-log']
+const PERSIST_LOG_IDS = ['bootstrap-log', 'whoami-log', 'notes-log', 'notes-api-log']
 const persistKey = (id) => `aauth-log-${id}`
 
 function persistActiveLog() {
@@ -167,6 +167,16 @@ function restorePersistedLogs() {
     if (!log) continue
     log.innerHTML = saved
     log.classList.remove('hidden')
+    // Pre-redirect interaction boxes (Continue with Hellō + QR, or
+    // the centered 'Redirecting…' card) carry a yellow animated
+    // flare. On reload those rows are already stale — the user has
+    // either returned from the PS or the flow has otherwise moved
+    // on — so the spinning gradient shouldn't paint again while the
+    // resume handler catches up. Strip any box found in the restored
+    // HTML; resumePending… rewrites the step body anyway.
+    for (const box of log.querySelectorAll('.interaction-box')) {
+      box.remove()
+    }
     // Collapse each top-level section on reload so the restored trail
     // doesn't flood the viewport. User can expand on demand. Mid-flow
     // resume paths will toggle them back open as they append.
@@ -1731,6 +1741,12 @@ async function resumePendingAuthorize() {
   // notesAuthorize) also drive which log container the resume steps
   // append into, since whoami and notes have separate logs now.
   setActiveLog(saved.notesAuthorize ? 'notes-log' : 'whoami-log')
+  // Make sure the tab matching the flow is active — default HTML has
+  // whoami selected, so a notes resume would otherwise land the user
+  // on the wrong tab while the Notes box reveals below (user-visible
+  // bug: approve notes at PS, come back, Notes app shows but whoami
+  // tab is still active).
+  window.aauthActivateTab?.(saved.notesAuthorize ? 'notes' : 'whoami')
   showLog()
   // Restore collapses every log-section on reload. Since a resume is
   // actively progressing the ceremony, pop them back open.
@@ -2623,7 +2639,17 @@ async function callNotesAPI(method, path, body) {
     : method === 'DELETE' ? 'notes_app.delete_request'
     : 'notes_app.get_request'
 
-  setActiveLog('notes-log')
+  // Per-operation API calls live in the Notes box's own log container,
+  // not the ceremony log (#notes-log). Keeps the authorization trace
+  // (which ends with "Another Authorization Request") from growing
+  // indefinitely as the user clicks around in the Notes app. On the
+  // first call of a session, open a "Notes API" section so subsequent
+  // steps group under one collapsible heading.
+  setActiveLog('notes-api-log')
+  const apiLog = currentLog()
+  if (apiLog && !apiLog.querySelector(':scope > details.log-section')) {
+    addLogSection(copy('sections.notes_api'))
+  }
   showLog()
   const step = addLogStep(
     fmt(copy(`${copyKey}.label_template`), { path }),

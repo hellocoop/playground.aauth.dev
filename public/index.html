@@ -308,6 +308,15 @@
       <legend>Notes</legend>
       <button id="notes-reset-btn" type="button" class="btn-outline section-reset" title="Clear notes auth token">Reset</button>
       <div id="notes-app"></div>
+      <!--
+        Per-operation Notes API call log. Lives under the Notes box so
+        the authorization ceremony (which ended with "Another
+        Authorization Request" in #notes-log) is visually distinct
+        from the subsequent runtime calls the agent makes on the user's
+        behalf. Same persistence + collapsible UX as the ceremony logs
+        — protocol.js routes callNotesAPI steps here via setActiveLog.
+      -->
+      <div class="protocol-log hidden" id="notes-api-log"></div>
     </fieldset>
   </div>
 

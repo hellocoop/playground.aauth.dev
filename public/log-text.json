@@ -8,7 +8,8 @@
     "whoami": "Whoami",
     "whoami_resumed": "Whoami (resumed)",
     "notes": "Notes",
-    "notes_resumed": "Notes (resumed)"
+    "notes_resumed": "Notes (resumed)",
+    "notes_api": "Notes API"
   },
 
   "bootstrap": {

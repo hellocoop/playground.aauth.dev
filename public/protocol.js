@@ -2837,7 +2837,8 @@
       whoami: "Whoami",
       whoami_resumed: "Whoami (resumed)",
       notes: "Notes",
-      notes_resumed: "Notes (resumed)"
+      notes_resumed: "Notes (resumed)",
+      notes_api: "Notes API"
     },
     bootstrap: {
       generate_ephemeral: {
@@ -3202,7 +3203,7 @@
     log.classList.add("hidden");
     if (PERSIST_LOG_IDS.includes(log.id)) clearPersistedLog(log.id);
   }
-  var PERSIST_LOG_IDS = ["bootstrap-log", "whoami-log", "notes-log"];
+  var PERSIST_LOG_IDS = ["bootstrap-log", "whoami-log", "notes-log", "notes-api-log"];
   var persistKey = (id) => `aauth-log-${id}`;
   function persistActiveLog() {
     const log = currentLog();
@@ -3229,6 +3230,9 @@
       if (!log) continue;
       log.innerHTML = saved;
       log.classList.remove("hidden");
+      for (const box of log.querySelectorAll(".interaction-box")) {
+        box.remove();
+      }
       for (const section of log.querySelectorAll(":scope > details.log-section")) {
         section.removeAttribute("open");
       }
@@ -4382,6 +4386,7 @@ ${renderJSON(body)}`;
     _resumeAuthorizePolling = true;
     document.querySelectorAll("#resource-section .authz-actions").forEach((el) => el.classList.add("hidden"));
     setActiveLog(saved.notesAuthorize ? "notes-log" : "whoami-log");
+    window.aauthActivateTab?.(saved.notesAuthorize ? "notes" : "whoami");
     showLog();
     currentLog()?.querySelectorAll(":scope > details.log-section").forEach((s) => s.setAttribute("open", ""));
     const isNotes = !!saved.notesAuthorize;
@@ -5107,7 +5112,11 @@ ${renderJSON(body)}`;
     const hasBody = body !== void 0 && body !== null;
     const components = hasBody ? ["@method", "@authority", "@path", "content-type", "signature-key"] : ["@method", "@authority", "@path", "signature-key"];
     const copyKey = method === "GET" && path === "/notes" ? "notes_app.list_request" : method === "POST" ? "notes_app.create_request" : method === "PUT" ? "notes_app.update_request" : method === "DELETE" ? "notes_app.delete_request" : "notes_app.get_request";
-    setActiveLog("notes-log");
+    setActiveLog("notes-api-log");
+    const apiLog = currentLog();
+    if (apiLog && !apiLog.querySelector(":scope > details.log-section")) {
+      addLogSection(copy("sections.notes_api"));
+    }
     showLog();
     const step = addLogStep(
       fmt(copy(`${copyKey}.label_template`), { path }),
