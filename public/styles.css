@@ -190,7 +190,7 @@ input[type="checkbox"]:disabled, input[type="radio"]:disabled {
 .token-display {
   background: #F2F6FB;
   border: none;
-  border-radius: 4px;
+  border-radius: 8px;
   padding: 0.6rem 0.75rem;
   font-family: 'IBM Plex Mono', 'SF Mono', 'Fira Code', monospace;
   font-size: 0.75rem;
@@ -391,7 +391,7 @@ a { color: var(--accent); }
   padding: 0.5rem 0.75rem;
   border: none;
   background: #F2F6FB;
-  border-radius: 2px;
+  border-radius: 8px;
   margin-bottom: 1rem;
 }
 @media (prefers-color-scheme: dark) {
