@@ -665,6 +665,10 @@ details.log-section + details.log-section {
   margin-top: 0.5rem;
 }
 
+#bootstrap-controls .authz-actions {
+  margin-bottom: 0.75rem;
+}
+
 /* Resource Request tabs — one per demo resource (whoami, r3, …). The
    active tab carries a bottom underline in --text; inactive tabs fade
    to --muted. Row overlaps the fieldset frame by 1px so the active
