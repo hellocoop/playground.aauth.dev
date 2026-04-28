@@ -464,6 +464,11 @@ details.log-section > #decoded-payload-details:last-child {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
+  /* Long unbroken tokens (URLs, scope strings with %20 separators)
+     would otherwise overflow the column horizontally. */
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  min-width: 0;
 }
 /* Sans-serif explicitly — otherwise the checkmark inside
    .section-legend-status inherits the mono face from its parent and
