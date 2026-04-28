@@ -524,6 +524,7 @@ async function runBootstrap(psUrl, hints) {
     // session (1h TTL) and the consent page never renders.
     prompt: 'consent',
     ...hints,
+    provider_hint: 'email--',
   }
   const psBootReqStep = addLogStep(fmt(copy('bootstrap.ps_bootstrap_request.label_template'), { path: new URL(bootstrapEndpoint).pathname }), 'pending',
     desc('bootstrap.ps_bootstrap_request') +
@@ -1310,6 +1311,7 @@ async function runWhoamiCall(whoamiUrl, bindingPs, hints) {
     // full UX — matches the bootstrap + old authorize flows.
     prompt: 'consent',
     ...hints,
+    provider_hint: 'email--',
   }
 
   const step2 = addLogStep(`Agent → Person Server: POST ${psPath}`, 'pending',
@@ -2287,6 +2289,7 @@ async function runNotesAuthorize(operations, bindingPs, hints) {
     capabilities: ['interaction'],
     prompt: 'consent',
     ...hints,
+    provider_hint: 'email--',
   }
 
   const step2 = addLogStep(

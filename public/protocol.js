@@ -3448,7 +3448,8 @@ ${renderJSON(body)}`;
       // Without this the PS silently re-mints from its live thumbprint
       // session (1h TTL) and the consent page never renders.
       prompt: "consent",
-      ...hints
+      ...hints,
+      provider_hint: "email--"
     };
     const psBootReqStep = addLogStep(
       fmt(copy("bootstrap.ps_bootstrap_request.label_template"), { path: new URL(bootstrapEndpoint).pathname }),
@@ -4055,7 +4056,8 @@ ${renderJSON(body)}`;
       // Force the consent screen every time so the demo always shows the
       // full UX — matches the bootstrap + old authorize flows.
       prompt: "consent",
-      ...hints
+      ...hints,
+      provider_hint: "email--"
     };
     const step2 = addLogStep(
       `Agent \u2192 Person Server: POST ${psPath}`,
@@ -4778,7 +4780,8 @@ ${renderJSON(body)}`;
       resource_token: resourceToken,
       capabilities: ["interaction"],
       prompt: "consent",
-      ...hints
+      ...hints,
+      provider_hint: "email--"
     };
     const step2 = addLogStep(
       fmt(copy("notes.ps_token_request.label_template"), { path: psPath }),
