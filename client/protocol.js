@@ -1283,146 +1283,41 @@ async function runWhoamiCall(whoamiUrl, bindingPs, hints) {
     return
   }
 
-  // Step 2: exchange resource_token at PS /token. Discover the token
-  // endpoint from PS metadata so this works regardless of which PS the
-  // user bootstrapped against.
-  const psMetadataUrl = `${bindingPs.replace(/\/$/, '')}/.well-known/aauth-person.json`
-  let psMetadata
-  try {
-    const metaRes = await fetch(psMetadataUrl)
-    psMetadata = await metaRes.json()
-    if (!metaRes.ok || !psMetadata?.token_endpoint) {
-      addLogStep(`Person Server metadata fetch failed`, 'error',
-        formatResponse(metaRes.status, null, psMetadata) + anotherRequestButton())
-      return
-    }
-  } catch (err) {
-    addLogStep(`Person Server metadata fetch failed`, 'error',
-      `<p style="color: var(--error)">${escapeHtml(err.message)}</p>` + anotherRequestButton())
-    return
-  }
-
-  const tokenEndpoint = psMetadata.token_endpoint
-  const psPath = new URL(tokenEndpoint).pathname
-  const psBody = {
-    resource_token: resourceToken,
-    capabilities: ['interaction'],
-    // Force the consent screen every time so the demo always shows the
-    // full UX — matches the bootstrap + old authorize flows.
-    prompt: 'consent',
-    ...hints,
-    provider_hint: 'email--',
-  }
-
-  const step2 = addLogStep(`Agent → Person Server: POST ${psPath}`, 'pending',
-    `<p>Agent presents the resource_token and its agent_token to the Person Server's token endpoint. The PS either releases an auth_token immediately (cached consent) or returns a 202 with a consent prompt.</p>` +
-    formatRequest('POST', tokenEndpoint, {
-      'Content-Type': 'application/json',
-      'Signature-Input': 'sig=("@method" "@authority" "@path" "signature-key");created=...',
-      'Signature': 'sig=:...:',
-      'Signature-Key': `sig=jwt;jwt="${agentToken?.substring(0, 20)}..."`,
-    }, psBody)
-  )
-
-  let authToken
-  try {
-    const psRes = await sigFetch(tokenEndpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(psBody),
-      signingKey: signingJwk,
-      signingCryptoKey: keyPair.privateKey,
-      signatureKey: { type: 'jwt', jwt: agentToken },
-      components: ['@method', '@authority', '@path', 'signature-key'],
-    })
-    const psResBody = await psRes.json().catch(() => null)
-    const respHeaders = {}
-    for (const key of ['location', 'retry-after', 'aauth-requirement']) {
-      const v = psRes.headers.get(key)
-      if (v) respHeaders[key] = v
-    }
-
-    if (psRes.status === 200 && psResBody?.auth_token) {
-      authToken = psResBody.auth_token
-      resolveStep(step2, 'success', `Agent → Person Server: POST ${psPath}`)
-      appendStepBody(step2, formatResponse(200, respHeaders, psResBody))
-      appendStepBody(step2, formatDecoded(decodeJWTPayloadBrowser(authToken)))
-    } else if (psRes.status === 202) {
-      resolveStep(step2, 'success', `Agent → Person Server: POST ${psPath}`)
-      appendStepBody(step2, formatResponse(202, respHeaders, psResBody))
-
-      const reqHeader = psRes.headers.get('aauth-requirement') || ''
-      const fromHeader = parseInteractionHeader(reqHeader)
-      const interaction = {
-        requirement: fromHeader.requirement || psResBody?.requirement,
-        code: fromHeader.code || psResBody?.code,
-        url: fromHeader.url || psMetadata.interaction_endpoint,
-      }
-      const pollUrl = psRes.headers.get('location') || psResBody?.location
-
-      let pollStep = null
-      if (pollUrl) {
-        const absolutePollUrl = new URL(pollUrl, tokenEndpoint).href
-        pollStep = addLogStep(`Agent → Person Server: GET ${new URL(absolutePollUrl).pathname} (long-poll)`, 'pending',
-          `<p>Agent keeps a request open while you decide, instead of polling. The Person Server answers the moment you approve or deny.</p>` +
-          formatRequest('GET', absolutePollUrl, {
-            'Prefer': `wait=${POLL_WAIT_SECONDS}`,
-            'Signature-Input': 'sig=("@method" "@authority" "@path" "signature-key");created=...',
-            'Signature': 'sig=:...:',
-            'Signature-Key': `sig=jwt;jwt="${agentToken?.substring(0, 20)}..."`,
-          }, null)
-        )
-        if (pollStep) {
-          pollStep.dataset.pollKey = 'whoami'
-          persistActiveLog()
-        }
-      }
-      const interactionStep = addLogStep(copy('authorize.ps_consent_prompt.label'), 'pending',
-        desc('authorize.ps_consent_prompt') +
-        renderInteraction(interaction, pollUrl, 'authorize')
-      )
-      // Tag so resumePendingAuthorize can reuse this step on return
-      // from the PS instead of leaving the stale "Continue with Hellō /
-      // QR" card alongside the fresh poll step.
-      if (interactionStep) {
-        interactionStep.dataset.consentKey = 'whoami'
-        persistActiveLog()
-      }
-
-      if (pollUrl) {
-        // Persist enough state to resume the flow after a same-tab
-        // redirect to the Person Server. `whoamiUrl` in the saved record
-        // tells resumePendingAuthorize to splice retryWhoami back onto
-        // the polling loop when auth_token arrives (vs. the generic
-        // "Authorization Granted" terminal step).
-        const absolutePollUrl = new URL(pollUrl, tokenEndpoint).href
-        savePendingAuthorize({
-          pollUrl: absolutePollUrl,
-          tokenEndpoint,
-          psUrl: bindingPs,
-          whoamiUrl,
-        })
-        startAuthTokenPolling(pollUrl, tokenEndpoint, interactionStep, pollStep, {
-          onAuthToken: async (tokenFromPoll) => {
-            showWhoamiAuthTokenReceived(tokenFromPoll)
-            await retryWhoami(whoamiUrl, whoamiPathDisplay, tokenFromPoll, keyPair, signingJwk)
-          },
-        })
-      }
-      return // polling handles the rest
-    } else {
-      resolveStep(step2, 'error', `Agent → Person Server: POST ${psPath} → ${psRes.status}`)
-      appendStepBody(step2, formatResponse(psRes.status, respHeaders, psResBody) + anotherRequestButton())
-      return
-    }
-  } catch (err) {
-    resolveStep(step2, 'error', `Agent → Person Server: POST ${psPath} (network error)`)
-    appendStepBody(step2, `<p style="color: var(--error)">${escapeHtml(err.message)}</p>` + anotherRequestButton())
-    return
-  }
-
-  // Step 3 (no-interaction path): retry whoami with the fresh auth_token.
-  await retryWhoami(whoamiUrl, whoamiPathDisplay, authToken, keyPair, signingJwk)
+  // Step 2: hand off to the shared resource flow for the PS token
+  // exchange + 202/long-poll/consent. The labels below preserve the
+  // exact strings whoami used pre-refactor (whoami's POST step, unlike
+  // notes', appends ` → ${status}` on error).
+  await runPSTokenExchange({
+    resourceToken,
+    bindingPs,
+    hints,
+    keyPair,
+    agentToken,
+    signingJwk,
+    labels: {
+      postLabel: (path) => `Agent → Person Server: POST ${path}`,
+      postLabelResolved: (path, status) =>
+        status === 200 || status === 202
+          ? `Agent → Person Server: POST ${path}`
+          : `Agent → Person Server: POST ${path} → ${status}`,
+      postLabelNetworkError: (path) => `Agent → Person Server: POST ${path} (network error)`,
+      postDescription: `<p>Agent presents the resource_token and its agent_token to the Person Server's token endpoint. The PS either releases an auth_token immediately (cached consent) or returns a 202 with a consent prompt.</p>`,
+      pollLabel: (path) => `Agent → Person Server: GET ${path} (long-poll)`,
+      pollDescription: `<p>Agent keeps a request open while you decide, instead of polling. The Person Server answers the moment you approve or deny.</p>`,
+      consentLabel: copy('authorize.ps_consent_prompt.label'),
+      consentDescription: desc('authorize.ps_consent_prompt'),
+    },
+    consentKey: 'whoami',
+    pendingExtra: { whoamiUrl },
+    onAuthToken: async (token, { viaPolling }) => {
+      // 200 path renders decoded inline on the POST step; only the
+      // 202/poll path needs a separate "Auth Token received" step
+      // (otherwise retryWhoami's "compare against the decoded payload
+      // above" copy points at nothing).
+      if (viaPolling) showWhoamiAuthTokenReceived(token)
+      await retryWhoami(whoamiUrl, whoamiPathDisplay, token, keyPair, signingJwk)
+    },
+  })
 }
 
 function showWhoamiAuthTokenReceived(authToken) {
@@ -1841,6 +1736,176 @@ if (document.readyState === 'complete') {
   fireFallbackResume()
 } else {
   window.addEventListener('load', fireFallbackResume, { once: true })
+}
+
+// ── Shared resource-server flow: PS token exchange + 202 long-poll ──
+//
+// Both whoami and notes converge here once they have a resource_token.
+// The pre-PS phase differs (whoami: 401 bounce on the resource itself;
+// notes: discovery + openapi + POST /authorize) and the post-token
+// phase differs (whoami: retry the GET, render identity claims; notes:
+// mount the Notes app, refresh the list), but PS metadata fetch +
+// POST /aauth/token + the 200/202 split + savePendingAuthorize +
+// kicking off the long-poll are identical. Per-flow log strings are
+// passed in via `labels` so the rendered output stays exactly what
+// each flow had before.
+async function runPSTokenExchange({
+  resourceToken,
+  bindingPs,
+  hints,
+  keyPair,
+  agentToken,
+  signingJwk,
+  // Per-flow labels/descriptions. Functions where the value depends
+  // on runtime state (path, status); plain strings/HTML otherwise.
+  labels,
+  // 'whoami' | 'notes' — written to data-poll-key / data-consent-key
+  // so resumePendingAuthorize can re-locate the steps after a same-tab
+  // PS redirect.
+  consentKey,
+  // Merged into the savePendingAuthorize record so the resumed flow
+  // can dispatch the correct post-token handler ({whoamiUrl} for
+  // whoami, {notesAuthorize: true} for notes, etc.).
+  pendingExtra,
+  // Called once auth_token is in hand. `viaPolling` is true if the
+  // token came from the consent long-poll, false if from the cached
+  // 200 path. Whoami uses this to gate showWhoamiAuthTokenReceived
+  // (the 200 path already renders decoded inline on the POST step, so
+  // a separate "Auth Token received" step would just duplicate). Notes
+  // ignores it — its finalizeNotesAuthToken always emits its own step.
+  onAuthToken,
+}) {
+  const psMetadataUrl = `${bindingPs.replace(/\/$/, '')}/.well-known/aauth-person.json`
+  let psMetadata
+  try {
+    const metaRes = await fetch(psMetadataUrl)
+    psMetadata = await metaRes.json()
+    if (!metaRes.ok || !psMetadata?.token_endpoint) {
+      addLogStep('Person Server metadata fetch failed', 'error',
+        formatResponse(metaRes.status, null, psMetadata) + anotherRequestButton())
+      return
+    }
+  } catch (err) {
+    addLogStep('Person Server metadata fetch failed', 'error',
+      `<p style="color: var(--error)">${escapeHtml(err.message)}</p>` + anotherRequestButton())
+    return
+  }
+
+  const tokenEndpoint = psMetadata.token_endpoint
+  const psPath = new URL(tokenEndpoint).pathname
+  const psBody = {
+    resource_token: resourceToken,
+    capabilities: ['interaction'],
+    // Force the consent screen every time so the demo always shows the
+    // full UX — matches the bootstrap + old authorize flows.
+    prompt: 'consent',
+    ...hints,
+    provider_hint: 'email--',
+  }
+
+  const step2 = addLogStep(labels.postLabel(psPath), 'pending',
+    labels.postDescription +
+    formatRequest('POST', tokenEndpoint, {
+      'Content-Type': 'application/json',
+      'Signature-Input': 'sig=("@method" "@authority" "@path" "signature-key");created=...',
+      'Signature': 'sig=:...:',
+      'Signature-Key': `sig=jwt;jwt="${agentToken?.substring(0, 20)}..."`,
+    }, psBody),
+  )
+
+  let authToken
+  try {
+    const psRes = await sigFetch(tokenEndpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(psBody),
+      signingKey: signingJwk,
+      signingCryptoKey: keyPair.privateKey,
+      signatureKey: { type: 'jwt', jwt: agentToken },
+      components: ['@method', '@authority', '@path', 'signature-key'],
+    })
+    const psResBody = await psRes.json().catch(() => null)
+    const respHeaders = {}
+    for (const key of ['location', 'retry-after', 'aauth-requirement']) {
+      const v = psRes.headers.get(key)
+      if (v) respHeaders[key] = v
+    }
+
+    if (psRes.status === 200 && psResBody?.auth_token) {
+      authToken = psResBody.auth_token
+      resolveStep(step2, 'success', labels.postLabelResolved(psPath, 200))
+      appendStepBody(step2, formatResponse(200, respHeaders, psResBody))
+      appendStepBody(step2, formatDecoded(decodeJWTPayloadBrowser(authToken)))
+      // Falls through to the post-200 handoff below.
+    } else if (psRes.status === 202) {
+      resolveStep(step2, 'success', labels.postLabelResolved(psPath, 202))
+      appendStepBody(step2, formatResponse(202, respHeaders, psResBody))
+
+      const reqHeader = psRes.headers.get('aauth-requirement') || ''
+      const fromHeader = parseInteractionHeader(reqHeader)
+      const interaction = {
+        requirement: fromHeader.requirement || psResBody?.requirement,
+        code: fromHeader.code || psResBody?.code,
+        url: fromHeader.url || psMetadata.interaction_endpoint,
+      }
+      const pollUrl = psRes.headers.get('location') || psResBody?.location
+
+      let pollStep = null
+      if (pollUrl) {
+        const absolutePollUrl = new URL(pollUrl, tokenEndpoint).href
+        pollStep = addLogStep(labels.pollLabel(new URL(absolutePollUrl).pathname), 'pending',
+          labels.pollDescription +
+          formatRequest('GET', absolutePollUrl, {
+            'Prefer': `wait=${POLL_WAIT_SECONDS}`,
+            'Signature-Input': 'sig=("@method" "@authority" "@path" "signature-key");created=...',
+            'Signature': 'sig=:...:',
+            'Signature-Key': `sig=jwt;jwt="${agentToken?.substring(0, 20)}..."`,
+          }, null),
+        )
+        if (pollStep) {
+          pollStep.dataset.pollKey = consentKey
+          persistActiveLog()
+        }
+      }
+      const interactionStep = addLogStep(labels.consentLabel, 'pending',
+        labels.consentDescription + renderInteraction(interaction, pollUrl, 'authorize'))
+      // Tag so resumePendingAuthorize can reuse this step on return
+      // from the PS instead of leaving the stale "Continue with Hellō /
+      // QR" card alongside the fresh poll step.
+      if (interactionStep) {
+        interactionStep.dataset.consentKey = consentKey
+        persistActiveLog()
+      }
+
+      if (pollUrl) {
+        const absolutePollUrl = new URL(pollUrl, tokenEndpoint).href
+        savePendingAuthorize({
+          pollUrl: absolutePollUrl,
+          tokenEndpoint,
+          psUrl: bindingPs,
+          ...pendingExtra,
+        })
+        startAuthTokenPolling(pollUrl, tokenEndpoint, interactionStep, pollStep, {
+          onAuthToken: async (tokenFromPoll) => {
+            await onAuthToken(tokenFromPoll, { viaPolling: true })
+          },
+        })
+      }
+      return // polling handles the rest
+    } else {
+      resolveStep(step2, 'error', labels.postLabelResolved(psPath, psRes.status))
+      appendStepBody(step2, formatResponse(psRes.status, respHeaders, psResBody) + anotherRequestButton())
+      return
+    }
+  } catch (err) {
+    resolveStep(step2, 'error', labels.postLabelNetworkError(psPath))
+    appendStepBody(step2, `<p style="color: var(--error)">${escapeHtml(err.message)}</p>` + anotherRequestButton())
+    return
+  }
+
+  // Post-200 (cached consent) handoff. The 202 path returns above and
+  // hands off via the polling onAuthToken wrapper.
+  await onAuthToken(authToken, { viaPolling: false })
 }
 
 // ── Auth-token polling (for PS /token interaction flow) ──
@@ -2292,135 +2357,39 @@ async function runNotesAuthorize(operations, bindingPs, hints) {
     return
   }
 
-  // Step 2: PS /aauth/token exchange. Identical pattern to whoami; the
-  // PS fetches the R3 document named in resource_token and emits an
-  // auth_token with r3_granted once the user approves.
-  const psMetadataUrl = `${bindingPs.replace(/\/$/, '')}/.well-known/aauth-person.json`
-  let psMetadata
-  try {
-    const metaRes = await fetch(psMetadataUrl)
-    psMetadata = await metaRes.json()
-    if (!metaRes.ok || !psMetadata?.token_endpoint) {
-      addLogStep('Person Server metadata fetch failed', 'error',
-        formatResponse(metaRes.status, null, psMetadata) + anotherRequestButton())
-      return
-    }
-  } catch (err) {
-    addLogStep('Person Server metadata fetch failed', 'error',
-      `<p style="color: var(--error)">${escapeHtml(err.message)}</p>` + anotherRequestButton())
-    return
-  }
-
-  const tokenEndpoint = psMetadata.token_endpoint
-  const psPath = new URL(tokenEndpoint).pathname
-  const psBody = {
-    resource_token: resourceToken,
-    capabilities: ['interaction'],
-    prompt: 'consent',
-    ...hints,
-    provider_hint: 'email--',
-  }
-
-  const step2 = addLogStep(
-    fmt(copy('notes.ps_token_request.label_template'), { path: psPath }),
-    'pending',
-    desc('notes.ps_token_request') +
-      formatRequest('POST', tokenEndpoint, {
-        'Content-Type': 'application/json',
-        'Signature-Input': 'sig=("@method" "@authority" "@path" "signature-key");created=...',
-        'Signature': 'sig=:...:',
-        'Signature-Key': `sig=jwt;jwt="${agentToken?.substring(0, 20)}..."`,
-      }, psBody),
-  )
-  let authToken
-  try {
-    const psRes = await sigFetch(tokenEndpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(psBody),
-      signingKey: signingJwk,
-      signingCryptoKey: keyPair.privateKey,
-      signatureKey: { type: 'jwt', jwt: agentToken },
-      components: ['@method', '@authority', '@path', 'signature-key'],
-    })
-    const psResBody = await psRes.json().catch(() => null)
-    const respHeaders = {}
-    for (const key of ['location', 'retry-after', 'aauth-requirement']) {
-      const v = psRes.headers.get(key)
-      if (v) respHeaders[key] = v
-    }
-
-    if (psRes.status === 200 && psResBody?.auth_token) {
-      authToken = psResBody.auth_token
-      resolveStep(step2, 'success', fmt(copy('notes.ps_token_request.label_resolved_template'), { path: psPath, status: 200 }))
-      appendStepBody(step2, formatResponse(200, respHeaders, psResBody))
-      appendStepBody(step2, formatDecoded(decodeJWTPayloadBrowser(authToken)))
-    } else if (psRes.status === 202) {
-      resolveStep(step2, 'success', fmt(copy('notes.ps_token_request.label_resolved_template'), { path: psPath, status: 202 }))
-      appendStepBody(step2, formatResponse(202, respHeaders, psResBody))
-
-      const reqHeader = psRes.headers.get('aauth-requirement') || ''
-      const fromHeader = parseInteractionHeader(reqHeader)
-      const interaction = {
-        requirement: fromHeader.requirement || psResBody?.requirement,
-        code: fromHeader.code || psResBody?.code,
-        url: fromHeader.url || psMetadata.interaction_endpoint,
-      }
-      const pollUrl = psRes.headers.get('location') || psResBody?.location
-
-      let pollStep = null
-      if (pollUrl) {
-        const absolutePollUrl = new URL(pollUrl, tokenEndpoint).href
-        pollStep = addLogStep(
-          fmt(copy('notes.ps_pending_longpoll.label_template'), { path: new URL(absolutePollUrl).pathname }),
-          'pending',
-          desc('notes.ps_pending_longpoll') +
-            formatRequest('GET', absolutePollUrl, {
-              'Prefer': `wait=${POLL_WAIT_SECONDS}`,
-              'Signature-Input': 'sig=("@method" "@authority" "@path" "signature-key");created=...',
-              'Signature': 'sig=:...:',
-              'Signature-Key': `sig=jwt;jwt="${agentToken?.substring(0, 20)}..."`,
-            }, null),
-        )
-        if (pollStep) {
-          pollStep.dataset.pollKey = 'notes'
-          persistActiveLog()
-        }
-      }
-      const interactionStep = addLogStep(copy('notes.ps_consent_prompt.label'), 'pending',
-        desc('notes.ps_consent_prompt') + renderInteraction(interaction, pollUrl, 'authorize'))
-      if (interactionStep) {
-        interactionStep.dataset.consentKey = 'notes'
-        persistActiveLog()
-      }
-
-      if (pollUrl) {
-        const absolutePollUrl = new URL(pollUrl, tokenEndpoint).href
-        savePendingAuthorize({
-          pollUrl: absolutePollUrl,
-          tokenEndpoint,
-          psUrl: bindingPs,
-          notesAuthorize: true,
-        })
-        startAuthTokenPolling(pollUrl, tokenEndpoint, interactionStep, pollStep, {
-          onAuthToken: async (tokenFromPoll) => {
-            await finalizeNotesAuthToken(tokenFromPoll)
-          },
-        })
-      }
-      return
-    } else {
-      resolveStep(step2, 'error', fmt(copy('notes.ps_token_request.label_resolved_template'), { path: psPath, status: psRes.status }))
-      appendStepBody(step2, formatResponse(psRes.status, respHeaders, psResBody) + anotherRequestButton())
-      return
-    }
-  } catch (err) {
-    resolveStep(step2, 'error', fmt(copy('notes.ps_token_request.label_error_network_template'), { path: psPath }))
-    appendStepBody(step2, `<p style="color: var(--error)">${escapeHtml(err.message)}</p>` + anotherRequestButton())
-    return
-  }
-
-  await finalizeNotesAuthToken(authToken)
+  // Step 2: hand off to the shared resource flow. Notes' R3-specific
+  // behavior (the resource_token names an R3 document; the PS fetches
+  // it and emits an auth_token with r3_granted) is captured in the
+  // copy keys passed below — the protocol shape from POST /aauth/token
+  // onward is identical to whoami's.
+  await runPSTokenExchange({
+    resourceToken,
+    bindingPs,
+    hints,
+    keyPair,
+    agentToken,
+    signingJwk,
+    labels: {
+      postLabel: (path) => fmt(copy('notes.ps_token_request.label_template'), { path }),
+      postLabelResolved: (path, status) =>
+        fmt(copy('notes.ps_token_request.label_resolved_template'), { path, status }),
+      postLabelNetworkError: (path) =>
+        fmt(copy('notes.ps_token_request.label_error_network_template'), { path }),
+      postDescription: desc('notes.ps_token_request'),
+      pollLabel: (path) => fmt(copy('notes.ps_pending_longpoll.label_template'), { path }),
+      pollDescription: desc('notes.ps_pending_longpoll'),
+      consentLabel: copy('notes.ps_consent_prompt.label'),
+      consentDescription: desc('notes.ps_consent_prompt'),
+    },
+    consentKey: 'notes',
+    pendingExtra: { notesAuthorize: true },
+    onAuthToken: async (token) => {
+      // finalizeNotesAuthToken always emits its own "Auth Token
+      // received" step (with decoded payload) and mounts the Notes
+      // app — same behavior on cached-200 and consent-202 paths.
+      await finalizeNotesAuthToken(token)
+    },
+  })
 }
 
 async function finalizeNotesAuthToken(authToken) {
