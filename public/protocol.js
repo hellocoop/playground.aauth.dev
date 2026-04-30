@@ -4454,15 +4454,15 @@ ${renderJSON(body)}`;
     }
   }
   async function _startAuthTokenPollingImpl(pollUrl, baseUrl, interactionStep, pollStep, options = {}) {
+    const targetLog = currentLog();
+    const pinLog = () => {
+      if (targetLog) __activeLogContainer = targetLog;
+    };
     const absolutePollUrl = new URL(pollUrl, baseUrl).href;
     const keyPair = window.aauthEphemeral.get();
     const agentToken = localStorage.getItem("aauth-agent-token");
     if (!keyPair || !agentToken) return;
     const signingJwk = await crypto.subtle.exportKey("jwk", keyPair.publicKey);
-    const targetLog = currentLog();
-    const pinLog = () => {
-      if (targetLog) __activeLogContainer = targetLog;
-    };
     const pollPath = new URL(absolutePollUrl).pathname;
     if (!pollStep) {
       pollStep = addLogStep(

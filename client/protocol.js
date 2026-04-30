@@ -1887,21 +1887,23 @@ async function startAuthTokenPolling(pollUrl, baseUrl, interactionStep, pollStep
 }
 
 async function _startAuthTokenPollingImpl(pollUrl, baseUrl, interactionStep, pollStep, options = {}) {
+  // Pin the log container this poll loop writes into BEFORE any await.
+  // While the long-poll awaits user interaction, other code may run
+  // that flips __activeLogContainer (e.g. restoreNotesApp →
+  // callNotesAPI on page reload, fired right after this function
+  // hits its first await). When the 200 finally arrives, currentLog()
+  // may no longer point at the log this flow started in — terminal
+  // steps would then land in the wrong tab and read as a "stuck"
+  // flow. Capture synchronously here, restore right before every
+  // terminal addLogStep / onAuthToken handoff. Capturing after any
+  // await is too late: the clobber can have already happened.
+  const targetLog = currentLog()
+  const pinLog = () => { if (targetLog) __activeLogContainer = targetLog }
   const absolutePollUrl = new URL(pollUrl, baseUrl).href
   const keyPair = window.aauthEphemeral.get()
   const agentToken = localStorage.getItem('aauth-agent-token')
   if (!keyPair || !agentToken) return
   const signingJwk = await crypto.subtle.exportKey('jwk', keyPair.publicKey)
-  // Pin the log container this poll loop writes into. While the
-  // long-poll awaits user interaction, other code may run that flips
-  // __activeLogContainer (e.g. restoreNotesApp → callNotesAPI on page
-  // reload, or any addLogStep from another flow). When the 200 finally
-  // arrives, currentLog() may no longer point at the log this flow
-  // started in — terminal steps would then land in the wrong tab and
-  // read as a "stuck" flow. Capture once, restore right before every
-  // terminal addLogStep / onAuthToken handoff.
-  const targetLog = currentLog()
-  const pinLog = () => { if (targetLog) __activeLogContainer = targetLog }
 
   const pollPath = new URL(absolutePollUrl).pathname
   // Caller can pre-create the pollStep so the log orders as
