@@ -932,6 +932,7 @@ details.log-section + details.log-section {
   background: transparent;
 }
 .log-step.success .qr-code > * { display: none; }
+.log-step.success .interaction-url-row { display: none; }
 .log-step.success .qr-code::before {
   content: '';
   width: 64px;
